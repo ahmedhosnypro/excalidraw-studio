@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { drizzle } from "drizzle-orm/libsql";
 
-import * as schema from "./schema";
+import { classicFullSchema, rqbRelations } from "./schema";
 
 const DEFAULT_DATABASE_URL = "file:db/excalidraw-studio.db";
 
@@ -26,7 +26,13 @@ const databaseUrl = resolveDatabaseFile(
 
 export const db = drizzle({
   client: createClient({ url: databaseUrl }),
-  schema,
+  relations: rqbRelations,
 });
 
-export { schema };
+// drizzle-graphql 0.8.5 discovers tables/relations through `db._.fullSchema`
+// (the pre-1.0 convention). Shim it with the classic schema shape.
+type DrizzleInternals = { fullSchema?: Record<string, unknown> };
+(db._ as DrizzleInternals).fullSchema = classicFullSchema;
+
+export { classicFullSchema, rqbRelations };
+export * from "./schema";

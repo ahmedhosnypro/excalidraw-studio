@@ -11,9 +11,9 @@ export type { StorageAdapter, StorageDriverName } from "./types";
  * Supported today: `local` (filesystem). Later, `s3` / `vercel-blob` drivers can
  * be registered here without touching any consuming code.
  */
-export function createStorage(driver?: string): StorageAdapter {
-  const name = (driver ?? process.env.STORAGE_DRIVER ?? "local").toLowerCase();
-  switch (name satisfies StorageDriverName as StorageDriverName) {
+export function createStorage(driver?: StorageDriverName): StorageAdapter {
+  const name = (driver ?? process.env.STORAGE_DRIVER ?? "local").toLowerCase() as StorageDriverName;
+  switch (name) {
     case "local":
       return new LocalFileSystemStorage();
     default:

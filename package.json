@@ -6,7 +6,12 @@
     "dev": "next dev -p 3000 2>&1 | tee dev.log",
     "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "typecheck": "tsgo --noEmit",
+    "db:push": "drizzle-kit push --hints '[{\"type\":\"create\",\"kind\":\"table\",\"entity\":[\"public\",\"comments\"]},{\"type\":\"create\",\"kind\":\"table\",\"entity\":[\"public\",\"files\"]},{\"type\":\"create\",\"kind\":\"table\",\"entity\":[\"public\",\"sessions\"]},{\"type\":\"create\",\"kind\":\"table\",\"entity\":[\"public\",\"users\"]}]'",
+    "db:generate": "drizzle-kit generate",
+    "db:studio": "drizzle-kit studio",
+    "quality": "bun run typecheck && oxlint . && biome check . && eslint . && jscpd src && knip"
   },
   "dependencies": {
     "@apollo/client": "^4.2.12",

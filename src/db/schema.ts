@@ -1,3 +1,5 @@
+import { relations as classicRelations } from "drizzle-orm/_relations";
+import { defineRelations } from "drizzle-orm";
 import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 const uuid = () => crypto.randomUUID();
@@ -82,7 +84,63 @@ export const comments = sqliteTable(
       .notNull()
       .$defaultFn(() => new Date()),
   },
-  (table) => [index("comments_file_id_idx").on(table.fileId)],
+  (table) => [
+    index("comments_file_id_idx").on(table.fileId),
+    index("comments_user_id_idx").on(table.userId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Relations (classic shape) — consumed by drizzle-graphql's buildSchema to
+// derive nested GraphQL types (FileSelectItem.user, .comments, …).
+// ---------------------------------------------------------------------------
+export const usersRelations = classicRelations(users, ({ many }) => ({
+  files: many(files),
+}));
+
+export const filesRelations = classicRelations(files, ({ one, many }) => ({
+  user: one(users, { fields: [files.userId], references: [users.id] }),
+  comments: many(comments),
+}));
+
+export const commentsRelations = classicRelations(comments, ({ one }) => ({
+  user: one(users, { fields: [comments.userId], references: [users.id] }),
+  file: one(files, { fields: [comments.fileId], references: [files.id] }),
+}));
+
+/**
+ * Classic schema shape handed to drizzle-graphql (it reads `db._.fullSchema`,
+ * a pre-drizzle-1.0 convention). The `sessions` table is deliberately omitted —
+ * it must never be exposed through the generated GraphQL surface.
+ */
+export const classicFullSchema = {
+  users,
+  files,
+  comments,
+  usersRelations,
+  filesRelations,
+  commentsRelations,
+};
+
+// ---------------------------------------------------------------------------
+// Relations (drizzle-orm 1.0 RQBv2 shape) — powers db.query.*.findMany with
+// nested `with` selects on the drizzle instance itself.
+// ---------------------------------------------------------------------------
+export const rqbRelations = defineRelations(
+  { users, files, comments },
+  (rl) => ({
+    users: {
+      files: rl.many.files({ from: rl.users.id, to: rl.files.userId }),
+    },
+    files: {
+      user: rl.one.users({ from: rl.files.userId, to: rl.users.id }),
+      comments: rl.many.comments({ from: rl.files.id, to: rl.comments.fileId }),
+    },
+    comments: {
+      user: rl.one.users({ from: rl.comments.userId, to: rl.users.id }),
+      file: rl.one.files({ from: rl.comments.fileId, to: rl.files.id }),
+    },
+  }),
 );
 
 export type UserRow = typeof users.$inferSelect;
