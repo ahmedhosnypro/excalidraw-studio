@@ -1,0 +1,551 @@
+diff --git a/index.cjs b/index.cjs
+index 95df201d97c9a479cc72c1b9e7cd7a8091f0140b..d86b915de3720599f27043e11a3b3791eac0c392 100644
+--- a/index.cjs
++++ b/index.cjs
+@@ -31,11 +31,13 @@ var import_graphql7 = require("graphql");
+ 
+ // src/util/builders/mysql.ts
+ var import_drizzle_orm4 = require("drizzle-orm");
++var import_drizzle_orm_relations4 = require("drizzle-orm/_relations");
+ var import_mysql_core2 = require("drizzle-orm/mysql-core");
+ var import_graphql4 = require("graphql");
+ 
+ // src/util/builders/common.ts
+ var import_drizzle_orm3 = require("drizzle-orm");
++var import_drizzle_orm_relations_one = require("drizzle-orm/_relations");
+ var import_graphql3 = require("graphql");
+ 
+ // src/util/case-ops/index.ts
+@@ -205,6 +207,19 @@ var geoXyInputType = new import_graphql2.GraphQLInputObjectType({
+     y: { type: import_graphql2.GraphQLFloat }
+   }
+ });
++var normalizeDataType = (column) => {
++  const dt = column.dataType;
++  if (typeof dt !== "string") return dt;
++  if (dt.startsWith("number")) return "number";
++  if (dt.startsWith("string")) return "string";
++  if (dt.startsWith("boolean")) return "boolean";
++  if (dt.startsWith("object") || dt.startsWith("date")) return "date";
++  if (dt.startsWith("json")) return "json";
++  if (dt.startsWith("bigint")) return "bigint";
++  if (dt.startsWith("buffer")) return "buffer";
++  if (dt.startsWith("array")) return "array";
++  return dt;
++};
+ var columnToGraphQLCore = (column, columnName, tableName, isInput) => {
+   switch (column.dataType) {
+     case "boolean":
+@@ -258,7 +273,7 @@ var columnToGraphQLCore = (column, columnName, tableName, isInput) => {
+ var drizzleColumnToGraphQLType = (column, columnName, tableName, forceNullable = false, defaultIsNullable = false, isInput = false) => {
+   const typeDesc = columnToGraphQLCore(column, columnName, tableName, isInput);
+   const noDesc = ["string", "boolean", "number"];
+-  if (noDesc.find((e) => e === column.dataType))
++  if (noDesc.find((e) => e === normalizeDataType(column)))
+     delete typeDesc.description;
+   if (forceNullable)
+     return typeDesc;
+@@ -472,7 +487,7 @@ var generateSelectFields = (tables, tableName, relationMap, typeName, withOrder,
+   const newDepth = currentDepth + 1;
+   for (const [relationName, { targetTableName, relation }] of relationEntries) {
+     const relTypeName = `${typeName}${capitalize(relationName)}Relation`;
+-    const isOne = (0, import_drizzle_orm3.is)(relation, import_drizzle_orm3.One);
++    const isOne = (0, import_drizzle_orm3.is)(relation, import_drizzle_orm_relations_one.One);
+     const relData = generateSelectFields(
+       tables,
+       targetTableName,
+@@ -579,16 +594,18 @@ var generateTableTypes = (tableName, tables, relationMap, withReturning, relatio
+   };
+ };
+ var extractOrderBy = (table, orderArgs) => {
+-  const res = [];
+-  for (const [column, config] of Object.entries(orderArgs).sort(
+-    (a, b) => (b[1]?.priority ?? 0) - (a[1]?.priority ?? 0)
+-  )) {
+-    if (!config)
+-      continue;
+-    const { direction } = config;
+-    res.push(direction === "asc" ? (0, import_drizzle_orm3.asc)((0, import_drizzle_orm3.getTableColumns)(table)[column]) : (0, import_drizzle_orm3.desc)((0, import_drizzle_orm3.getTableColumns)(table)[column]));
+-  }
+-  return res;
++    const res = {};
++    for (const [column, config] of Object.entries(orderArgs).sort(
++      (a, b) => (b[1]?.priority ?? 0) - (a[1]?.priority ?? 0)
++    )) {
++      if (!config)
++        continue;
++      const { direction } = config;
++      if (!getTableColumns2(table)[column])
++        continue;
++      res[column] = direction === "asc" ? "asc" : "desc";
++    }
++    return Object.keys(res).length ? res : void 0;
+ };
+ var extractFiltersColumn = (column, columnName, operators) => {
+   if (!operators.OR?.length)
+@@ -685,6 +702,43 @@ var extractFilters = (table, tableName, filters) => {
+   }
+   return variants.length ? variants.length > 1 ? (0, import_drizzle_orm3.and)(...variants) : variants[0] : void 0;
+ };
++
++var convertFiltersToV2 = (table, filters) => {
++  if (!filters || typeof filters !== "object") return void 0;
++  const result = {};
++  for (const [key, value] of Object.entries(filters)) {
++    if (value === void 0 || value === null) continue;
++    if (key === "OR") {
++      const variants = (Array.isArray(value) ? value : [value])
++        .map((v) => convertFiltersToV2(table, v))
++        .filter(Boolean);
++      if (variants.length) result.OR = variants;
++      continue;
++    }
++    const column = getTableColumns2(table)[key];
++    if (!column) continue;
++    const converted = {};
++    for (const [op, opValue] of Object.entries(value ?? {})) {
++      if (opValue === void 0) continue;
++      const v2op = op === "inArray" ? "in" : op === "notInArray" ? "notIn" : op;
++      if (v2op === "isNull" || v2op === "isNotNull") {
++        if (opValue) converted[v2op] = true;
++        continue;
++      }
++      if (v2op === "OR" || v2op === "AND" || v2op === "NOT") {
++        converted[v2op] = opValue;
++        continue;
++      }
++      if (Array.isArray(opValue)) {
++        converted[v2op] = opValue.map((v) => remapFromGraphQLCore(v, column, key));
++      } else {
++        converted[v2op] = remapFromGraphQLCore(opValue, column, key);
++      }
++    }
++    if (Object.keys(converted).length) result[key] = converted;
++  }
++  return Object.keys(result).length ? result : void 0;
++};
+ var extractRelationsParamsInner = (relationMap, tables, tableName, typeName, originField, isInitial = false) => {
+   const relations = relationMap[tableName];
+   if (!relations)
+@@ -706,7 +760,7 @@ var extractRelationsParamsInner = (relationMap, tables, tableName, typeName, ori
+     const relationField = Object.values(baseField).find((e) => e.name === relName);
+     const relationArgs = relationField?.args;
+     const orderBy = relationArgs?.orderBy ? extractOrderBy(tables[targetTableName], relationArgs.orderBy) : void 0;
+-    const where = relationArgs?.where ? extractFilters(tables[targetTableName], relName, relationArgs?.where) : void 0;
++    const where = relationArgs?.where ? convertFiltersToV2(tables[targetTableName], relationArgs?.where) : void 0;
+     const offset = relationArgs?.offset ?? void 0;
+     const limit = relationArgs?.limit ?? void 0;
+     thisRecord.orderBy = orderBy;
+@@ -767,7 +821,7 @@ var generateSelectArray = (db, tableName, tables, relationMap, orderArgs, filter
+           offset,
+           limit,
+           orderBy: orderBy ? extractOrderBy(table, orderBy) : void 0,
+-          where: where ? extractFilters(table, tableName, where) : void 0,
++          where: where ? convertFiltersToV2(table, where) : void 0,
+           with: relationMap[tableName] ? extractRelationsParams(relationMap, tables, tableName, parsedInfo, typeName) : void 0
+         });
+         const result = await query;
+@@ -818,7 +872,7 @@ var generateSelectSingle = (db, tableName, tables, relationMap, orderArgs, filte
+           ),
+           offset,
+           orderBy: orderBy ? extractOrderBy(table, orderBy) : void 0,
+-          where: where ? extractFilters(table, tableName, where) : void 0,
++          where: where ? convertFiltersToV2(table, where) : void 0,
+           with: relationMap[tableName] ? extractRelationsParams(relationMap, tables, tableName, parsedInfo, typeName) : void 0
+         });
+         const result = await query;
+@@ -959,14 +1013,14 @@ var generateSchemaData = (db, schema, relationsDepthLimit) => {
+       "Drizzle-GraphQL Error: No tables detected in Drizzle-ORM's database instance. Did you forget to pass schema to drizzle constructor?"
+     );
+   }
+-  const rawRelations = schemaEntries.filter(([key, value]) => (0, import_drizzle_orm4.is)(value, import_drizzle_orm4.Relations)).map(([key, value]) => [
++  const rawRelations = schemaEntries.filter(([key, value]) => (0, import_drizzle_orm4.is)(value, import_drizzle_orm_relations4.Relations)).map(([key, value]) => [
+     tableEntries.find(
+       ([tableName, tableValue]) => tableValue === value.table
+     )[0],
+     value
+   ]).map(([tableName, relValue]) => [
+     tableName,
+-    relValue.config((0, import_drizzle_orm4.createTableRelationsHelpers)(tables[tableName]))
++    relValue.config((0, import_drizzle_orm_relations4.createTableRelationsHelpers)(tables[tableName]))
+   ]);
+   const namedRelations = Object.fromEntries(
+     rawRelations.map(([relName, config]) => {
+@@ -1071,6 +1125,7 @@ var generateSchemaData = (db, schema, relationsDepthLimit) => {
+ 
+ // src/util/builders/pg.ts
+ var import_drizzle_orm5 = require("drizzle-orm");
++var import_drizzle_orm_relations5 = require("drizzle-orm/_relations");
+ var import_pg_core2 = require("drizzle-orm/pg-core");
+ var import_graphql5 = require("graphql");
+ var import_graphql_parse_resolve_info2 = require("graphql-parse-resolve-info");
+@@ -1115,7 +1170,7 @@ var generateSelectArray2 = (db, tableName, tables, relationMap, orderArgs, filte
+           offset,
+           limit,
+           orderBy: orderBy ? extractOrderBy(table, orderBy) : void 0,
+-          where: where ? extractFilters(table, tableName, where) : void 0,
++          where: where ? convertFiltersToV2(table, where) : void 0,
+           with: relationMap[tableName] ? extractRelationsParams(relationMap, tables, tableName, parsedInfo, typeName) : void 0
+         });
+         const result = await query;
+@@ -1166,7 +1221,7 @@ var generateSelectSingle2 = (db, tableName, tables, relationMap, orderArgs, filt
+           ),
+           offset,
+           orderBy: orderBy ? extractOrderBy(table, orderBy) : void 0,
+-          where: where ? extractFilters(table, tableName, where) : void 0,
++          where: where ? convertFiltersToV2(table, where) : void 0,
+           with: relationMap[tableName] ? extractRelationsParams(relationMap, tables, tableName, parsedInfo, typeName) : void 0
+         });
+         const result = await query;
+@@ -1343,14 +1398,14 @@ var generateSchemaData2 = (db, schema, relationsDepthLimit) => {
+       "Drizzle-GraphQL Error: No tables detected in Drizzle-ORM's database instance. Did you forget to pass schema to drizzle constructor?"
+     );
+   }
+-  const rawRelations = schemaEntries.filter(([key, value]) => (0, import_drizzle_orm5.is)(value, import_drizzle_orm5.Relations)).map(([key, value]) => [
++  const rawRelations = schemaEntries.filter(([key, value]) => (0, import_drizzle_orm5.is)(value, import_drizzle_orm_relations5.Relations)).map(([key, value]) => [
+     tableEntries.find(
+       ([tableName, tableValue]) => tableValue === value.table
+     )[0],
+     value
+   ]).map(([tableName, relValue]) => [
+     tableName,
+-    relValue.config((0, import_drizzle_orm5.createTableRelationsHelpers)(tables[tableName]))
++    relValue.config((0, import_drizzle_orm_relations5.createTableRelationsHelpers)(tables[tableName]))
+   ]);
+   const namedRelations = Object.fromEntries(
+     rawRelations.map(([relName, config]) => {
+@@ -1440,6 +1495,7 @@ var generateSchemaData2 = (db, schema, relationsDepthLimit) => {
+ 
+ // src/util/builders/sqlite.ts
+ var import_drizzle_orm6 = require("drizzle-orm");
++var import_drizzle_orm_relations6 = require("drizzle-orm/_relations");
+ var import_sqlite_core2 = require("drizzle-orm/sqlite-core");
+ var import_graphql6 = require("graphql");
+ var import_graphql_parse_resolve_info3 = require("graphql-parse-resolve-info");
+@@ -1483,7 +1539,7 @@ var generateSelectArray3 = (db, tableName, tables, relationMap, orderArgs, filte
+           offset,
+           limit,
+           orderBy: orderBy ? extractOrderBy(table, orderBy) : void 0,
+-          where: where ? extractFilters(table, tableName, where) : void 0,
++          where: where ? convertFiltersToV2(table, where) : void 0,
+           with: relationMap[tableName] ? extractRelationsParams(relationMap, tables, tableName, parsedInfo, typeName) : void 0
+         });
+         const result = await query;
+@@ -1534,7 +1590,7 @@ var generateSelectSingle3 = (db, tableName, tables, relationMap, orderArgs, filt
+           ),
+           offset,
+           orderBy: orderBy ? extractOrderBy(table, orderBy) : void 0,
+-          where: where ? extractFilters(table, tableName, where) : void 0,
++          where: where ? convertFiltersToV2(table, where) : void 0,
+           with: relationMap[tableName] ? extractRelationsParams(relationMap, tables, tableName, parsedInfo, typeName) : void 0
+         });
+         const result = await query;
+@@ -1711,14 +1767,14 @@ var generateSchemaData3 = (db, schema, relationsDepthLimit) => {
+       "Drizzle-GraphQL Error: No tables detected in Drizzle-ORM's database instance. Did you forget to pass schema to drizzle constructor?"
+     );
+   }
+-  const rawRelations = schemaEntries.filter(([key, value]) => (0, import_drizzle_orm6.is)(value, import_drizzle_orm6.Relations)).map(([key, value]) => [
++  const rawRelations = schemaEntries.filter(([key, value]) => (0, import_drizzle_orm6.is)(value, import_drizzle_orm_relations6.Relations)).map(([key, value]) => [
+     tableEntries.find(
+       ([tableName, tableValue]) => tableValue === value.table
+     )[0],
+     value
+   ]).map(([tableName, relValue]) => [
+     tableName,
+-    relValue.config((0, import_drizzle_orm6.createTableRelationsHelpers)(tables[tableName]))
++    relValue.config((0, import_drizzle_orm_relations6.createTableRelationsHelpers)(tables[tableName]))
+   ]);
+   const namedRelations = Object.fromEntries(
+     rawRelations.map(([relName, config]) => {
+@@ -1833,11 +1889,11 @@ var buildSchema = (db, config) => {
+     }
+   }
+   let generatorOutput;
+-  if ((0, import_drizzle_orm7.is)(db, import_mysql_core3.MySqlDatabase)) {
++  if ((0, import_drizzle_orm7.is)(db, import_mysql_core3.MySqlAsyncDatabase)) {
+     generatorOutput = generateSchemaData(db, schema, config?.relationsDepthLimit);
+-  } else if ((0, import_drizzle_orm7.is)(db, import_pg_core3.PgDatabase)) {
++  } else if ((0, import_drizzle_orm7.is)(db, import_pg_core3.PgAsyncDatabase)) {
+     generatorOutput = generateSchemaData2(db, schema, config?.relationsDepthLimit);
+-  } else if ((0, import_drizzle_orm7.is)(db, import_sqlite_core3.BaseSQLiteDatabase)) {
++  } else if ((0, import_drizzle_orm7.is)(db, import_sqlite_core3.SQLiteAsyncDatabase)) {
+     generatorOutput = generateSchemaData3(db, schema, config?.relationsDepthLimit);
+   } else
+     throw new Error("Drizzle-GraphQL Error: Unknown database instance type");
+diff --git a/index.js b/index.js
+index e137d8c2d0154c01eaf70fed2a5564556aa4ec49..864412a2fca6c4db216cb5c3cc259954d5721349 100644
+--- a/index.js
++++ b/index.js
+@@ -1,15 +1,16 @@
+ // src/index.ts
+ import { is as is6 } from "drizzle-orm";
+-import { MySqlDatabase as MySqlDatabase2 } from "drizzle-orm/mysql-core";
+-import { PgDatabase as PgDatabase2 } from "drizzle-orm/pg-core";
+-import { BaseSQLiteDatabase as BaseSQLiteDatabase2 } from "drizzle-orm/sqlite-core";
++import { MySqlAsyncDatabase as MySqlDatabase2 } from "drizzle-orm/mysql-core";
++import { PgAsyncDatabase as PgDatabase2 } from "drizzle-orm/pg-core";
++import { SQLiteAsyncDatabase as BaseSQLiteDatabase2 } from "drizzle-orm/sqlite-core";
+ import {
+   GraphQLObjectType as GraphQLObjectType6,
+   GraphQLSchema
+ } from "graphql";
+ 
+ // src/util/builders/mysql.ts
+-import { createTableRelationsHelpers, is as is3, Relations } from "drizzle-orm";
++import { is as is3 } from "drizzle-orm";
++import { createTableRelationsHelpers as createTableRelationsHelpersMysql, Relations as RelationsMysql } from "drizzle-orm/_relations";
+ import { MySqlTable } from "drizzle-orm/mysql-core";
+ import {
+   GraphQLBoolean as GraphQLBoolean3,
+@@ -41,9 +42,9 @@ import {
+   notIlike,
+   notInArray,
+   notLike,
+-  One,
+   or
+ } from "drizzle-orm";
++import { One } from "drizzle-orm/_relations";
+ import {
+   GraphQLBoolean as GraphQLBoolean2,
+   GraphQLEnumType as GraphQLEnumType2,
+@@ -117,7 +118,7 @@ var remapToGraphQLArrayOutput = (queryOutput, tableName, table, relationMap) =>
+   return queryOutput;
+ };
+ var remapFromGraphQLCore = (value, column, columnName) => {
+-  switch (column.dataType) {
++  switch (normalizeDataType(column)) {
+     case "date": {
+       const formatted = new Date(value);
+       if (Number.isNaN(formatted.getTime()))
+@@ -233,8 +234,21 @@ var geoXyInputType = new GraphQLInputObjectType({
+     y: { type: GraphQLFloat }
+   }
+ });
++var normalizeDataType = (column) => {
++  const dt = column.dataType;
++  if (typeof dt !== "string") return dt;
++  if (dt.startsWith("number")) return "number";
++  if (dt.startsWith("string")) return "string";
++  if (dt.startsWith("boolean")) return "boolean";
++  if (dt.startsWith("object") || dt.startsWith("date")) return "date";
++  if (dt.startsWith("json")) return "json";
++  if (dt.startsWith("bigint")) return "bigint";
++  if (dt.startsWith("buffer")) return "buffer";
++  if (dt.startsWith("array")) return "array";
++  return dt;
++};
+ var columnToGraphQLCore = (column, columnName, tableName, isInput) => {
+-  switch (column.dataType) {
++  switch (normalizeDataType(column)) {
+     case "boolean":
+       return { type: GraphQLBoolean, description: "Boolean" };
+     case "json":
+@@ -286,7 +300,7 @@ var columnToGraphQLCore = (column, columnName, tableName, isInput) => {
+ var drizzleColumnToGraphQLType = (column, columnName, tableName, forceNullable = false, defaultIsNullable = false, isInput = false) => {
+   const typeDesc = columnToGraphQLCore(column, columnName, tableName, isInput);
+   const noDesc = ["string", "boolean", "number"];
+-  if (noDesc.find((e) => e === column.dataType))
++  if (noDesc.find((e) => e === normalizeDataType(column)))
+     delete typeDesc.description;
+   if (forceNullable)
+     return typeDesc;
+@@ -607,16 +621,18 @@ var generateTableTypes = (tableName, tables, relationMap, withReturning, relatio
+   };
+ };
+ var extractOrderBy = (table, orderArgs) => {
+-  const res = [];
++  const res = {};
+   for (const [column, config] of Object.entries(orderArgs).sort(
+     (a, b) => (b[1]?.priority ?? 0) - (a[1]?.priority ?? 0)
+   )) {
+     if (!config)
+       continue;
+     const { direction } = config;
+-    res.push(direction === "asc" ? asc(getTableColumns2(table)[column]) : desc(getTableColumns2(table)[column]));
++    if (!getTableColumns2(table)[column])
++      continue;
++    res[column] = direction === "asc" ? "asc" : "desc";
+   }
+-  return res;
++  return Object.keys(res).length ? res : void 0;
+ };
+ var extractFiltersColumn = (column, columnName, operators) => {
+   if (!operators.OR?.length)
+@@ -713,6 +729,43 @@ var extractFilters = (table, tableName, filters) => {
+   }
+   return variants.length ? variants.length > 1 ? and(...variants) : variants[0] : void 0;
+ };
++
++var convertFiltersToV2 = (table, filters) => {
++  if (!filters || typeof filters !== "object") return void 0;
++  const result = {};
++  for (const [key, value] of Object.entries(filters)) {
++    if (value === void 0 || value === null) continue;
++    if (key === "OR") {
++      const variants = (Array.isArray(value) ? value : [value])
++        .map((v) => convertFiltersToV2(table, v))
++        .filter(Boolean);
++      if (variants.length) result.OR = variants;
++      continue;
++    }
++    const column = getTableColumns2(table)[key];
++    if (!column) continue;
++    const converted = {};
++    for (const [op, opValue] of Object.entries(value ?? {})) {
++      if (opValue === void 0) continue;
++      const v2op = op === "inArray" ? "in" : op === "notInArray" ? "notIn" : op;
++      if (v2op === "isNull" || v2op === "isNotNull") {
++        if (opValue) converted[v2op] = true;
++        continue;
++      }
++      if (v2op === "OR" || v2op === "AND" || v2op === "NOT") {
++        converted[v2op] = opValue;
++        continue;
++      }
++      if (Array.isArray(opValue)) {
++        converted[v2op] = opValue.map((v) => remapFromGraphQLCore(v, column, key));
++      } else {
++        converted[v2op] = remapFromGraphQLCore(opValue, column, key);
++      }
++    }
++    if (Object.keys(converted).length) result[key] = converted;
++  }
++  return Object.keys(result).length ? result : void 0;
++};
+ var extractRelationsParamsInner = (relationMap, tables, tableName, typeName, originField, isInitial = false) => {
+   const relations = relationMap[tableName];
+   if (!relations)
+@@ -734,7 +787,7 @@ var extractRelationsParamsInner = (relationMap, tables, tableName, typeName, ori
+     const relationField = Object.values(baseField).find((e) => e.name === relName);
+     const relationArgs = relationField?.args;
+     const orderBy = relationArgs?.orderBy ? extractOrderBy(tables[targetTableName], relationArgs.orderBy) : void 0;
+-    const where = relationArgs?.where ? extractFilters(tables[targetTableName], relName, relationArgs?.where) : void 0;
++    const where = relationArgs?.where ? convertFiltersToV2(tables[targetTableName], relationArgs?.where) : void 0;
+     const offset = relationArgs?.offset ?? void 0;
+     const limit = relationArgs?.limit ?? void 0;
+     thisRecord.orderBy = orderBy;
+@@ -795,7 +848,7 @@ var generateSelectArray = (db, tableName, tables, relationMap, orderArgs, filter
+           offset,
+           limit,
+           orderBy: orderBy ? extractOrderBy(table, orderBy) : void 0,
+-          where: where ? extractFilters(table, tableName, where) : void 0,
++          where: where ? convertFiltersToV2(table, where) : void 0,
+           with: relationMap[tableName] ? extractRelationsParams(relationMap, tables, tableName, parsedInfo, typeName) : void 0
+         });
+         const result = await query;
+@@ -846,7 +899,7 @@ var generateSelectSingle = (db, tableName, tables, relationMap, orderArgs, filte
+           ),
+           offset,
+           orderBy: orderBy ? extractOrderBy(table, orderBy) : void 0,
+-          where: where ? extractFilters(table, tableName, where) : void 0,
++          where: where ? convertFiltersToV2(table, where) : void 0,
+           with: relationMap[tableName] ? extractRelationsParams(relationMap, tables, tableName, parsedInfo, typeName) : void 0
+         });
+         const result = await query;
+@@ -987,14 +1040,14 @@ var generateSchemaData = (db, schema, relationsDepthLimit) => {
+       "Drizzle-GraphQL Error: No tables detected in Drizzle-ORM's database instance. Did you forget to pass schema to drizzle constructor?"
+     );
+   }
+-  const rawRelations = schemaEntries.filter(([key, value]) => is3(value, Relations)).map(([key, value]) => [
++  const rawRelations = schemaEntries.filter(([key, value]) => is3(value, RelationsMysql)).map(([key, value]) => [
+     tableEntries.find(
+       ([tableName, tableValue]) => tableValue === value.table
+     )[0],
+     value
+   ]).map(([tableName, relValue]) => [
+     tableName,
+-    relValue.config(createTableRelationsHelpers(tables[tableName]))
++    relValue.config(createTableRelationsHelpersMysql(tables[tableName]))
+   ]);
+   const namedRelations = Object.fromEntries(
+     rawRelations.map(([relName, config]) => {
+@@ -1098,7 +1151,8 @@ var generateSchemaData = (db, schema, relationsDepthLimit) => {
+ };
+ 
+ // src/util/builders/pg.ts
+-import { createTableRelationsHelpers as createTableRelationsHelpers2, is as is4, Relations as Relations2 } from "drizzle-orm";
++import { is as is4 } from "drizzle-orm";
++import { createTableRelationsHelpers as createTableRelationsHelpersPg, Relations as RelationsPg } from "drizzle-orm/_relations";
+ import { PgTable } from "drizzle-orm/pg-core";
+ import {
+   GraphQLError as GraphQLError4,
+@@ -1148,7 +1202,7 @@ var generateSelectArray2 = (db, tableName, tables, relationMap, orderArgs, filte
+           offset,
+           limit,
+           orderBy: orderBy ? extractOrderBy(table, orderBy) : void 0,
+-          where: where ? extractFilters(table, tableName, where) : void 0,
++          where: where ? convertFiltersToV2(table, where) : void 0,
+           with: relationMap[tableName] ? extractRelationsParams(relationMap, tables, tableName, parsedInfo, typeName) : void 0
+         });
+         const result = await query;
+@@ -1199,7 +1253,7 @@ var generateSelectSingle2 = (db, tableName, tables, relationMap, orderArgs, filt
+           ),
+           offset,
+           orderBy: orderBy ? extractOrderBy(table, orderBy) : void 0,
+-          where: where ? extractFilters(table, tableName, where) : void 0,
++          where: where ? convertFiltersToV2(table, where) : void 0,
+           with: relationMap[tableName] ? extractRelationsParams(relationMap, tables, tableName, parsedInfo, typeName) : void 0
+         });
+         const result = await query;
+@@ -1376,14 +1430,14 @@ var generateSchemaData2 = (db, schema, relationsDepthLimit) => {
+       "Drizzle-GraphQL Error: No tables detected in Drizzle-ORM's database instance. Did you forget to pass schema to drizzle constructor?"
+     );
+   }
+-  const rawRelations = schemaEntries.filter(([key, value]) => is4(value, Relations2)).map(([key, value]) => [
++  const rawRelations = schemaEntries.filter(([key, value]) => is4(value, RelationsPg)).map(([key, value]) => [
+     tableEntries.find(
+       ([tableName, tableValue]) => tableValue === value.table
+     )[0],
+     value
+   ]).map(([tableName, relValue]) => [
+     tableName,
+-    relValue.config(createTableRelationsHelpers2(tables[tableName]))
++    relValue.config(createTableRelationsHelpersPg(tables[tableName]))
+   ]);
+   const namedRelations = Object.fromEntries(
+     rawRelations.map(([relName, config]) => {
+@@ -1472,7 +1526,8 @@ var generateSchemaData2 = (db, schema, relationsDepthLimit) => {
+ };
+ 
+ // src/util/builders/sqlite.ts
+-import { createTableRelationsHelpers as createTableRelationsHelpers3, is as is5, Relations as Relations3 } from "drizzle-orm";
++import { is as is5 } from "drizzle-orm";
++import { createTableRelationsHelpers as createTableRelationsHelpersSqlite, Relations as RelationsSqlite } from "drizzle-orm/_relations";
+ import { SQLiteTable } from "drizzle-orm/sqlite-core";
+ import {
+   GraphQLError as GraphQLError5,
+@@ -1521,7 +1576,7 @@ var generateSelectArray3 = (db, tableName, tables, relationMap, orderArgs, filte
+           offset,
+           limit,
+           orderBy: orderBy ? extractOrderBy(table, orderBy) : void 0,
+-          where: where ? extractFilters(table, tableName, where) : void 0,
++          where: where ? convertFiltersToV2(table, where) : void 0,
+           with: relationMap[tableName] ? extractRelationsParams(relationMap, tables, tableName, parsedInfo, typeName) : void 0
+         });
+         const result = await query;
+@@ -1572,7 +1627,7 @@ var generateSelectSingle3 = (db, tableName, tables, relationMap, orderArgs, filt
+           ),
+           offset,
+           orderBy: orderBy ? extractOrderBy(table, orderBy) : void 0,
+-          where: where ? extractFilters(table, tableName, where) : void 0,
++          where: where ? convertFiltersToV2(table, where) : void 0,
+           with: relationMap[tableName] ? extractRelationsParams(relationMap, tables, tableName, parsedInfo, typeName) : void 0
+         });
+         const result = await query;
+@@ -1749,14 +1804,14 @@ var generateSchemaData3 = (db, schema, relationsDepthLimit) => {
+       "Drizzle-GraphQL Error: No tables detected in Drizzle-ORM's database instance. Did you forget to pass schema to drizzle constructor?"
+     );
+   }
+-  const rawRelations = schemaEntries.filter(([key, value]) => is5(value, Relations3)).map(([key, value]) => [
++  const rawRelations = schemaEntries.filter(([key, value]) => is5(value, RelationsSqlite)).map(([key, value]) => [
+     tableEntries.find(
+       ([tableName, tableValue]) => tableValue === value.table
+     )[0],
+     value
+   ]).map(([tableName, relValue]) => [
+     tableName,
+-    relValue.config(createTableRelationsHelpers3(tables[tableName]))
++    relValue.config(createTableRelationsHelpersSqlite(tables[tableName]))
+   ]);
+   const namedRelations = Object.fromEntries(
+     rawRelations.map(([relName, config]) => {

@@ -15,7 +15,7 @@
 | Live site inspection via agent-browser | Full main-menu structure, shapes toolbar, zoom controls, welcome screen, library sidebar, command palette (all sections), complete keyboard-shortcuts list (Tools / View / Editor) |
 | Uploaded screenshots (6) | Command palette (App/Export/Editor/Tools/Elements/Links sections), right sidebar with 3 tabs (Libraries, Comments, Present), top-left main menu incl. Preferences (theme, language, canvas background) |
 | Cloned repo `/tmp/excalidraw-research` (master) | `dev-docs/docs/@excalidraw/excalidraw/**` — integration (Next.js `dynamic` + `ssr:false`), props, `excalidrawAPI`, `UIOptions`, `Sidebar` children components (`Sidebar.Header/Tabs/Tab/TabTriggers/TabTrigger/Trigger`), `MainMenu`, `WelcomeScreen`, `Footer`, `useHandleLibrary` |
-| npm registry | `@excalidraw/excalidraw@0.18.1`, `drizzle-orm@1.0.0-rc.4`, `drizzle-kit@1.0.0-rc.4`, `eslint-plugin-drizzle@0.2.3`, `@libsql/client@0.17.4`, `oxlint@1.80`, `@biomejs/biome@2.5`, `jscpd@5.1`, `knip@6.33`, `lefthook@2.1`, `@typescript/native-preview` (tsgo) |
+| npm registry | `@excalidraw/excalidraw@0.18.1`, `drizzle-orm@1.0.0-rc.4`, `drizzle-kit@1.0.0-rc.4`, `eslint-plugin-drizzle@0.2.3`, `@libsql/client@0.17.4`, `drizzle-graphql@0.8.5` (new `buildSchema(db)` API returning composable entities), `@apollo/server@5.5`, `@as-integrations/next@4.1` (Next 16-ready), `@apollo/client@4.2`, `graphql@16`, `oxlint@1.80`, `@biomejs/biome@2.5`, `jscpd@5.1`, `knip@6.33`, `lefthook@2.1`, `@typescript/native-preview` (tsgo) |
 
 ### 1.2 Excalidraw integration facts (from dev-docs)
 
@@ -68,16 +68,28 @@
 │   ├─ <AuthDialog> (sign in / sign up)                             │
 │   └─ <FilesDialog> (open / switch / rename / delete / new)        │
 │                                                                    │
-│  State: zustand (editor + ui store) · TanStack Query (server)     │
+│  State: zustand (editor + ui store) · Apollo Client (server data)  │
 └──────────────────────────────────────────────────────────────────┘
-                              │  fetch /api/*
+                              │  POST /api/graphql (Apollo)
 ┌──────────────────────────────────────────────────────────────────┐
-│ API routes (route handlers, all server-side)                      │
-│  POST /api/auth/signup · login · logout · GET /api/auth/me        │
-│  GET/POST /api/files            list (search) / create            │
-│  GET/PATCH/DELETE /api/files/:id  load / rename / delete          │
-│  PUT  /api/files/:id/content    save scene (autosave target)      │
-│  GET/POST /api/files/:id/comments · DELETE /api/comments/:id      │
+│ GraphQL API — src/app/api/graphql/route.ts                        │
+│  Apollo Server 5 (@apollo/server + @as-integrations/next)          │
+│                                                                    │
+│  Schema composition (src/server/graphql/*):                        │
+│   ├─ drizzle-graphql `buildSchema(db)` → generated entities        │
+│   │   (types, filters, orderBy inputs, queries, mutations)         │
+│   ├─ exposed: `files` / `filesSingle` queries (wrapped: the        │
+│   │   resolver force-injects `userId = viewer` into every where)   │
+│   └─ custom queries/mutations (auth, storage, comments)            │
+│                                                                    │
+│  Queries:   me · files · filesSingle · scene(fileId) ·            │
+│              comments(fileId)                                     │
+│  Mutations: signup · login · logout ·                              │
+│              createFile · renameFile · deleteFile · saveScene ·    │
+│              duplicateFile ·                                      │
+│              addComment · updateComment · resolveComment ·         │
+│              deleteComment · migrateGuestScene                    │
+│  NO REST (except none — GraphQL only). Health = the GQL ping.      │
 └──────────────────────────────────────────────────────────────────┘
         │                          │
 ┌─────────────────┐   ┌───────────────────────────────────────────┐
@@ -104,10 +116,25 @@
    AWS/Vercel migration a single new adapter class.
 3. **Custom session auth** (no NextAuth) — email + password with PBKDF2 hashing via
    Web Crypto (zero native deps, works in Bun), opaque session tokens in httpOnly
-   cookies, sessions table with expiry. Simple, portable, fully controlled.
-4. **Single user route** (`/`) — everything else is `/api/*` handlers. The editor is
-   one focused app shell.
-5. **Excalidraw package as the engine** — we don't fork the canvas; we wrap it and
+   cookies, sessions table with expiry. Auth is fully GraphQL: `signup` / `login` /
+   `logout` mutations + `me` query. Cookie writes are applied by the route handler
+   from a per-request context stash (deterministic with Apollo's buffered
+   responses; no reliance on `next/headers` timing inside resolvers).
+4. **Single user route** (`/`) — the only other HTTP surface is the GraphQL
+   endpoint at `/api/graphql` (App Router route handler, Node runtime).
+   **GraphQL-first**: Apollo Server 5 + `@as-integrations/next`; Apollo Client 4
+   on the frontend. REST is avoided entirely — the only HTTP routes are `/` and
+   `/api/graphql`.
+5. **drizzle-graphql for CRUD scaffolding, custom resolvers for security** —
+   `buildSchema(db)` (drizzle-graphql 0.8.5) generates the object types, filter
+   and orderBy inputs, and query/mutation field configs from the drizzle schema.
+   We compose them into our own `GraphQLSchema` and expose ONLY what is safe:
+   the generated `files` / `filesSingle` queries get wrapped so `userId` is
+   always force-set to the authenticated viewer (client-supplied filters for
+   other columns still work). Mutations are all hand-written because they need
+   session context, storage side-effects and ownership checks — the generated
+   insert/update/delete fields are NOT exposed.
+6. **Excalidraw package as the engine** — we don't fork the canvas; we wrap it and
    add our persistence, collaboration-free multi-file management, comments, and
    presentation mode around it.
 
@@ -126,22 +153,38 @@ comments  (id uuid pk, fileId → files, userId → users, body text,
 
 All timestamps are unix-epoch integers (portable across sqlite → pg).
 
-### 2.3 API contract (summary)
+### 2.3 GraphQL operations (single endpoint: `POST /api/graphql`)
 
-| Route | Method | Auth | Body / Result |
+All timestamps serialize as ISO 8601 strings (GraphQL `Date` scalar). Scene
+payloads travel as a custom `JSON` scalar. Errors use standard GraphQL `errors`
+with `extensions.code` (`UNAUTHENTICATED`, `FORBIDDEN`, `BAD_USER_INPUT`,
+`CONFLICT`, `INTERNAL_SERVER_ERROR`).
+
+| Operation | Type | Auth | Description |
 | --- | --- | --- | --- |
-| `/api/auth/signup` | POST | – | `{ email, password, name }` → sets cookie |
-| `/api/auth/login` | POST | – | `{ email, password }` → sets cookie |
-| `/api/auth/logout` | POST | ✓ | clears cookie + deletes session |
-| `/api/auth/me` | GET | – | `{ user } | { user: null }` |
-| `/api/files` | GET | ✓ | list user's files (recent-first) |
-| `/api/files` | POST | ✓ | `{ name }` → creates file + empty scene |
-| `/api/files/:id` | GET | ✓ | metadata + scene JSON |
-| `/api/files/:id` | PATCH | ✓ | `{ name }` rename |
-| `/api/files/:id` | DELETE | ✓ | deletes metadata + storage blob |
-| `/api/files/:id/content` | PUT | ✓ | `{ elements, appState, files }` autosave |
-| `/api/files/:id/comments` | GET/POST | ✓ | list / add comment |
-| `/api/comments/:id` | DELETE | ✓ | delete own comment |
+| `me` | query | – | current `User` or `null` |
+| `files(where, orderBy, limit, offset)` | query | ✓ | viewer's files (generated, wrapped — `userId` forced server-side) |
+| `filesSingle(where)` | query | ✓ | one file of the viewer (same wrapping) |
+| `scene(fileId)` | query | ✓ | scene JSON (`{ elements, appState, files }`) from storage |
+| `comments(fileId)` | query | ✓ | comments for a viewer-owned file, newest-first, with author info |
+| `signup(email, password, name)` | mutation | – | creates user + session → httpOnly cookie |
+| `login(email, password)` | mutation | – | session cookie |
+| `logout` | mutation | ✓ | deletes session row, clears cookie |
+| `createFile(name)` | mutation | ✓ | DB row + empty scene blob in storage |
+| `renameFile(id, name)` | mutation | ✓ | ownership-checked rename |
+| `deleteFile(id)` | mutation | ✓ | deletes DB row (cascade) + storage blob |
+| `duplicateFile(id)` | mutation | ✓ | copies DB row + scene blob ("Copy of …") |
+| `saveScene(fileId, data)` | mutation | ✓ | autosave target: writes scene blob, bumps `updatedAt` |
+| `migrateGuestScene(data, name)` | mutation | ✓ | guest→cloud adoption of a local scene on sign-in |
+| `addComment(fileId, body, x, y)` | mutation | ✓ | new comment (optionally pinned to canvas coords) |
+| `updateComment(id, body)` | mutation | ✓ | edit own comment |
+| `resolveComment(id, resolved)` | mutation | ✓ | toggle resolve (file owner or comment author) |
+| `deleteComment(id)` | mutation | ✓ | delete own comment (or file owner) |
+
+**Apollo Client cache normalization** — `File`, `Comment`, `User` types carry
+`id` fields so list/detail views and mutations (`renameFile`, `saveScene`, …)
+update the cache via `cache.modify` / automatic normalization without refetch
+storms. `me` is stored under a fixed cache id.
 
 ---
 
@@ -233,11 +276,11 @@ don't use) gets **deleted**, not ignored.
 
 | # | Milestone | Deliverables |
 | --- | --- | --- |
-| **M0** | Plan + repo bootstrap | `PLAN.md`, `.gitignore` (full list), git config, initial commit + push to `ahmedhosnypro/excalidraw-app` |
-| **M1** | Data + storage foundation | drizzle schema + client, `drizzle.config.ts`, db push, storage factory (local FS), auth APIs (signup/login/logout/me), files + comments APIs, `src/lib/api` typed client |
-| **M2** | Editor core | Excalidraw dynamic wrapper, theme binding, custom MainMenu, welcome screen, top-right auth/file UI, file switcher dialog, autosave (debounced onChange → PUT content), guest → local-only mode |
+| **M0** | Plan + repo bootstrap | `PLAN.md`, `.gitignore` (full list), git config, initial commit + push to `ahmedhosnypro/excalidraw-studio` |
+| **M1** | GraphQL API + data foundation | drizzle schema + client, `drizzle.config.ts`, db push, storage factory (local FS), Apollo Server at `/api/graphql` (drizzle-graphql-generated `files` queries with viewer scoping + custom auth/file/scene/comment resolvers), Apollo Client provider + typed documents, REST scaffold removed |
+| **M2** | Editor core | Excalidraw dynamic wrapper, theme binding, custom MainMenu, welcome screen, top-right auth/file UI, file switcher dialog, autosave (debounced onChange → `saveScene` mutation), guest → local-only mode + guest→cloud migration |
 | **M3** | Command palette + shortcuts | cmdk palette with all sections/shortcuts, shortcuts help dialog, app-level hotkeys, find-on-canvas |
-| **M4** | Right sidebar | Libraries tab (persist per user), Comments tab (full CRUD + canvas pins), Present tab (frames → slides, fullscreen playback) |
+| **M4** | Right sidebar | Libraries tab (persist per user), Comments tab (full CRUD via GraphQL + canvas pins), Present tab (frames → slides, fullscreen playback) |
 | **M5** | Quality gates | lefthook pre-commit (tsgo → oxlint → biome → eslint → jscpd → knip), configs (biome.json, knip.json, jscpd opts, .oxlintrc), fix ALL warnings, delete unused scaffold, final lint-clean commit |
 | **M6** | Verification | agent-browser E2E: sign up → create file → draw → autosave → switch → reload → verify persistence, palette, sidebar, theme, shortcuts, presentation; fix issues; final push |
 
@@ -249,6 +292,10 @@ don't use) gets **deleted**, not ignored.
 | --- | --- |
 | Excalidraw package conflicts with React 19 / Next 16 | Package 0.18.x supports React 19 (umd + module builds); dynamic import isolates SSR issues |
 | `drizzle-orm@1.0.0-rc.4` API drift vs stable docs | Verified actual `dist/types` of the installed RC — `drizzle()` from `drizzle-orm/libsql`, standard sqlite table builders |
+| drizzle-graphql 0.8.5 generating unscoped CRUD (any row queryable/mutable) | Only compose the wrapped `files` / `filesSingle` queries into the public schema; generated mutations and `users` / `sessions` / `comments` root queries are never exposed. All writes go through hand-written, ownership-checked resolvers |
+| Setting cookies from inside GraphQL resolvers | Deterministic pattern: resolvers push `Set-Cookie` strings onto the request-scoped Apollo context; the route handler applies them to the final `NextResponse` (no `next/headers` timing assumptions) |
+| GraphQL `JSON` scalar misuse (arbitrary payloads) | Hand-written scalar used only for `saveScene`/`scene`/`migrateGuestScene` data; validated with a zod-ish shape check before storage write |
+| Large scene payloads through GraphQL | Apollo has no body-size limit issues on route handlers; scenes are gzipped by Next in prod. Keep `saveScene` debounced (~1s) client-side |
 | knip flags the 50+ shadcn scaffold components | Delete every unused scaffold file (rule: only what we use ships) |
 | jscpd flags shadcn internals | Only lint our `src` code (`src/**/*.{ts,tsx}`), never `node_modules` |
 | Theme FOUC / hydration mismatch | `next-themes` `suppressHydrationWarning` + class strategy |
