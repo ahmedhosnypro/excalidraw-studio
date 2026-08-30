@@ -1,2 +1,145 @@
-skills/
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+!/scripts/build/
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+!.env.example
+
+# vercel
+.vercel
+# Generated at build time by scripts/build/generate-vercel-config.ts
+/vercel.json
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+.eslintcache
+.scannerwork/
+
+/logs/
+
+.mcp.json
+
+*.sql_ignore
+*.log
+
+scratch/
+
+**/unRefactored_tests/
+
 node_modules/
+!/scripts/build/
+# build/
+dist/
+coverage/
+.DS_Store
+
+.next
+.next-dev
+tsconfig.tsbuildinfo
+.quality-gate-state.json
+.quality-gate-lock/
+
+eslint-results.json
+*storybook.log
+storybook-static
+
+.playwright-mcp
+
+.next-test
+.next-test-*
+.graphql-test-ports
+
+.idea/*
+!.idea/siraj.iml
+!.idea/modules.xml
+
+# Stakpak session files
+.stakpak/session*
+.stakpak
+
+# local uploads only (not backend/storage or backend/services/storage)
+/storage/
+/storage
+.aider*
+ai/.archive
+prompt/
+.gitwandrc
+*.txt
+.playwright-cli
+
+skills-lock.json
+.agent-canvas
+
+scripts/run-test/feedback/feedback*.md
+
+.graphql-test-heartbeats/dump.rdb
+.graphql-test-heartbeats/
+
+.eslintcache-type-aware
+.oxlint-baseline.json
+.oxlint/
+.unused/
+nohup.out
+report/jscpd-report.json
+
+report/jscpd-report.html
+jscpd-admin
+jscpd-intra
+jscpd-output
+jscpd-all
+
+# locale JS transpiled artifacts
+shared/locale/**/*.js
+.openhands/agent-canvas/logs
+.next-locale-snapshots-version
+
+# QA-only artifacts (local sandbox testing — not for production)
+/db/
+/download/
+/worklog.md
+dev.log
+
+# Browser login cookies created by scripts/browser-login.ts (contain session tokens)
+.browser-auth/
+
+__pycache__
+
+# sandbox extras
+/skills/
+/examples/
+/mini-services/
+/tests/
+/upload/
+.bun
+Caddyfile
+.zscripts/
