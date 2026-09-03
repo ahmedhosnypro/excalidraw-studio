@@ -34,6 +34,7 @@ export interface CommentGql {
   id: string;
   fileId: string;
   body: string;
+  parentId: string | null;
   x: number | null;
   y: number | null;
   resolved: boolean;
@@ -106,6 +107,7 @@ export const COMMENTS_QUERY = gql`
       id
       fileId
       body
+      parentId
       x
       y
       resolved
@@ -253,6 +255,7 @@ const COMMENT_FIELDS = `
   id
   fileId
   body
+  parentId
   x
   y
   resolved
@@ -265,8 +268,8 @@ const COMMENT_FIELDS = `
 `;
 
 export const ADD_COMMENT_MUTATION = gql`
-  mutation AddComment($fileId: ID!, $body: String!, $x: Float, $y: Float) {
-    addComment(fileId: $fileId, body: $body, x: $x, y: $y) {
+  mutation AddComment($fileId: ID!, $body: String!, $parentId: ID, $x: Float, $y: Float) {
+    addComment(fileId: $fileId, body: $body, parentId: $parentId, x: $x, y: $y) {
       ${COMMENT_FIELDS}
     }
   }
@@ -304,6 +307,7 @@ export interface CommentMutationVariables {
   id?: string;
   fileId?: string;
   body?: string;
+  parentId?: string | null;
   x?: number | null;
   y?: number | null;
   resolved?: boolean;

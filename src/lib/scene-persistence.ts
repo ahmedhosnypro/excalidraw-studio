@@ -1,8 +1,6 @@
 "use client";
 
-import { serializeAsJSON } from "@excalidraw/excalidraw";
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
-import type { AppState, BinaryFileData, BinaryFiles } from "@excalidraw/excalidraw/types";
+import type { BinaryFileData } from "@excalidraw/excalidraw/types";
 import type { SceneDataInput } from "@/lib/graphql/operations";
 
 const GUEST_SCENE_KEY = "studio:guest-scene";
@@ -11,24 +9,6 @@ export interface GuestScene {
   name: string;
   data: SceneDataInput;
   savedAt: number;
-}
-
-/**
- * Serializes the current scene the same way `.excalidraw` files are written,
- * guaranteeing consistent (filtered) appState between saves and exports.
- */
-export function buildSceneInput(
-  elements: readonly ExcalidrawElement[],
-  appState: AppState,
-  files: BinaryFiles,
-): SceneDataInput {
-  const json = serializeAsJSON(elements, appState, files, "database");
-  const parsed = JSON.parse(json) as {
-    elements: unknown[];
-    appState: Record<string, unknown>;
-    files: Record<string, unknown>;
-  };
-  return { elements: parsed.elements, appState: parsed.appState, files: parsed.files };
 }
 
 export function saveGuestScene(input: SceneDataInput): void {

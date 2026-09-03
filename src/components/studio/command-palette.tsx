@@ -19,6 +19,7 @@ import {
   Image as ImageIcon,
   LogIn,
   LogOut,
+  MapPin,
   MessageCircle,
   Minus,
   Moon,
@@ -451,12 +452,23 @@ export function CommandPalette({
         id: "comments",
         label: "Comments",
         icon: <MessageCircle />,
-        keywords: "comments sidebar feedback",
+        keywords: "comments sidebar feedback threads replies",
         perform: () => {
           useEditorStore.getState().excalidrawApi?.toggleSidebar({
             name: "default",
             tab: "comments",
           });
+        },
+      },
+      {
+        id: "place-comment-pin",
+        label: "Place comment pin on canvas",
+        icon: <MapPin />,
+        keywords: "comment pin place canvas crosshair annotate",
+        perform: () => {
+          const store = useEditorStore.getState();
+          store.excalidrawApi?.toggleSidebar({ name: "default", tab: "comments" });
+          store.startPinPlacement();
         },
       },
       {

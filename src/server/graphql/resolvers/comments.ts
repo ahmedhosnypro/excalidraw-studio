@@ -70,6 +70,28 @@ export async function listComments(userId: string, fileId: string): Promise<Comm
   return rows.map((row) => toCommentOutput(row.comment, authorOf(row)));
 }
 
+/**
+ * Validates a `parentId` for a new reply: the parent must exist, live on the
+ * same file, and itself be a top-level comment (threads nest exactly once).
+ */
+async function requireValidParent(fileId: string, parentId: string): Promise<CommentRow> {
+  const rows = await db.select().from(comments).where(eq(comments.id, parentId)).limit(1);
+  const parent = rows[0];
+  if (!parent) {
+    throw gqlError("NOT_FOUND", "The comment you are replying to no longer exists.");
+  }
+  if (parent.fileId !== fileId) {
+    throw gqlError("BAD_USER_INPUT", "Replies must stay within the same file.");
+  }
+  if (parent.parentId !== null) {
+    throw gqlError(
+      "BAD_USER_INPUT",
+      "Replies only attach to top-level comments — reply to the thread instead.",
+    );
+  }
+  return parent;
+}
+
 export async function addComment(
   userId: string,
   authorName: string,
@@ -77,8 +99,14 @@ export async function addComment(
   body: unknown,
   x: unknown,
   y: unknown,
+  parentId: unknown,
 ): Promise<CommentOutput> {
   await requireOwnedFile(fileId, userId);
+  let validatedParentId: string | null = null;
+  if (typeof parentId === "string" && parentId.length > 0) {
+    await requireValidParent(fileId, parentId);
+    validatedParentId = parentId;
+  }
   const inserted = await db
     .insert(comments)
     .values({
@@ -87,6 +115,7 @@ export async function addComment(
       body: parseBody(body),
       x: parseCoordinate(x),
       y: parseCoordinate(y),
+      parentId: validatedParentId,
     })
     .returning();
   const row = inserted[0];
@@ -169,6 +198,10 @@ export async function deleteComment(userId: string, commentId: string): Promise<
     // File owners may moderate (delete) any comment on their file.
     await requireOwnedFile(found.comment.fileId, userId);
   }
+  // Replies are removed together with their thread root (the DB also has a
+  // cascade FK, but deleting explicitly keeps it correct even when the
+  // foreign_keys pragma is off).
+  await db.delete(comments).where(eq(comments.parentId, commentId));
   await db.delete(comments).where(eq(comments.id, commentId));
   return true;
 }

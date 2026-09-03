@@ -55,6 +55,10 @@ export const CommentType: GraphQLObjectType = new GraphQLObjectType({
     id: { type: GraphQLID },
     fileId: { type: GraphQLID },
     body: { type: GraphQLString },
+    parentId: {
+      type: GraphQLID,
+      description: "Top-level comment this entry replies to, if any.",
+    },
     x: { type: GraphQLFloat },
     y: { type: GraphQLFloat },
     resolved: { type: GraphQLBoolean },
@@ -68,6 +72,7 @@ export interface CommentOutput {
   id: string;
   fileId: string;
   body: string;
+  parentId: string | null;
   x: number | null;
   y: number | null;
   resolved: boolean;
@@ -84,6 +89,7 @@ export function toCommentOutput(
     id: row.id,
     fileId: row.fileId,
     body: row.body,
+    parentId: row.parentId,
     x: row.x,
     y: row.y,
     resolved: row.resolved,

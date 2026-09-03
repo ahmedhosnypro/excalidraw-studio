@@ -237,17 +237,30 @@ const deleteFileMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
 
 const addCommentMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
   type: new GraphQLNonNull(CommentType),
-  description: "Add a comment to a file you own, optionally pinned to canvas coords.",
+  description:
+    "Add a comment to a file you own, optionally pinned to canvas coords. Pass parentId to reply within an existing thread.",
   args: {
     fileId: { type: new GraphQLNonNull(GraphQLID) },
     body: { type: new GraphQLNonNull(GraphQLString) },
+    parentId: {
+      type: GraphQLID,
+      description: "Top-level comment to reply to (threads nest exactly once).",
+    },
     x: { type: GraphQLFloat },
     y: { type: GraphQLFloat },
   },
   resolve: (_source, args, context) => {
     assertAuthenticated(context.userId);
     const authorName = context.user?.name ?? "";
-    return addComment(context.userId, authorName, String(args.fileId), args.body, args.x, args.y);
+    return addComment(
+      context.userId,
+      authorName,
+      String(args.fileId),
+      args.body,
+      args.x,
+      args.y,
+      args.parentId,
+    );
   },
 };
 

@@ -31,6 +31,17 @@ interface EditorState {
   highlightedCommentId: string | null;
   highlightComment: (id: string | null) => void;
 
+  /**
+   * Click-to-place pin mode: while active, the next canvas click picks the
+   * pin location for the pending comment draft (stored in pendingPin).
+   */
+  pinPlacementActive: boolean;
+  pendingPin: { x: number; y: number } | null;
+  startPinPlacement: () => void;
+  cancelPinPlacement: () => void;
+  placePin: (x: number, y: number) => void;
+  clearPendingPin: () => void;
+
   /** Currently open cloud file (null = guest/local scene). */
   activeFileId: string | null;
   activeFileName: string | null;
@@ -68,6 +79,23 @@ interface EditorState {
   flushSave: (() => Promise<void>) | null;
   registerFlushSave: (fn: (() => Promise<void>) | null) => void;
 
+  /** Registered by the autosave hook; discards a pending (stale) snapshot. */
+  cancelSave: (() => void) | null;
+  registerCancelSave: (fn: (() => void) | null) => void;
+
+  /** Registered by the autosave hook; clears the change-detection baseline. */
+  resetSaveBaseline: (() => void) | null;
+  registerResetSaveBaseline: (fn: (() => void) | null) => void;
+
+  /**
+   * Set when the canvas (re)mounted while a file is open — editor-app reacts
+   * by re-loading and re-applying that file's scene (remounts otherwise start
+   * with an empty canvas, which must never be saved over the stored scene).
+   */
+  reopenFileId: string | null;
+  requestReopen: (id: string) => void;
+  clearReopen: () => void;
+
   /** Internal flag suppressing autosave while a scene is being loaded. */
   loadingScene: boolean;
   setLoadingScene: (loading: boolean) => void;
@@ -82,6 +110,13 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   highlightedCommentId: null,
   highlightComment: (id) => set({ highlightedCommentId: id }),
+
+  pinPlacementActive: false,
+  pendingPin: null,
+  startPinPlacement: () => set({ pinPlacementActive: true }),
+  cancelPinPlacement: () => set({ pinPlacementActive: false }),
+  placePin: (x, y) => set({ pinPlacementActive: false, pendingPin: { x, y } }),
+  clearPendingPin: () => set({ pendingPin: null }),
 
   activeFileId: null,
   activeFileName: null,
@@ -111,6 +146,16 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   flushSave: null,
   registerFlushSave: (fn) => set({ flushSave: fn }),
+
+  cancelSave: null,
+  registerCancelSave: (fn) => set({ cancelSave: fn }),
+
+  resetSaveBaseline: null,
+  registerResetSaveBaseline: (fn) => set({ resetSaveBaseline: fn }),
+
+  reopenFileId: null,
+  requestReopen: (id) => set({ reopenFileId: id }),
+  clearReopen: () => set({ reopenFileId: null }),
 
   loadingScene: false,
   setLoadingScene: (loading) => set({ loadingScene: loading }),

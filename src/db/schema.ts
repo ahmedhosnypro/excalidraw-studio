@@ -1,6 +1,13 @@
 import { defineRelations } from "drizzle-orm";
 import { relations as classicRelations } from "drizzle-orm/_relations";
-import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  type AnySQLiteColumn,
+  index,
+  integer,
+  real,
+  sqliteTable,
+  text,
+} from "drizzle-orm/sqlite-core";
 
 const uuid = () => crypto.randomUUID();
 const timestamp = (name: string) => integer(name, { mode: "timestamp_ms" });
@@ -57,6 +64,10 @@ export const comments = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     body: text("body").notNull(),
+    /** Top-level comment this row replies to (one level of nesting). */
+    parentId: text("parent_id").references((): AnySQLiteColumn => comments.id, {
+      onDelete: "cascade",
+    }),
     x: real("x"),
     y: real("y"),
     resolved: integer("resolved", { mode: "boolean" }).notNull().default(false),
@@ -66,6 +77,7 @@ export const comments = sqliteTable(
   (table) => [
     index("comments_file_id_idx").on(table.fileId),
     index("comments_user_id_idx").on(table.userId),
+    index("comments_parent_id_idx").on(table.parentId),
   ],
 );
 

@@ -46,8 +46,28 @@ function applyCookies(request: NextRequest, response: Response): Response {
 }
 
 export async function POST(request: NextRequest): Promise<Response> {
-  const response = await apolloHandler(request);
-  return applyCookies(request, response);
+  // Aborted client requests (e.g. page reloads mid-flight) can arrive with an
+  // empty body, which makes the integration's JSON.parse throw. Answer those
+  // with a clean 400 instead of an unhandled server error.
+  if (request.headers.get("content-length") === "0") {
+    return jsonErrorResponse("Empty request body.");
+  }
+  try {
+    const response = await apolloHandler(request);
+    return applyCookies(request, response);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return jsonErrorResponse("Malformed or empty request body.");
+    }
+    throw error;
+  }
+}
+
+function jsonErrorResponse(message: string): Response {
+  return new Response(JSON.stringify({ errors: [{ message }] }), {
+    status: 400,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 export async function GET(request: NextRequest): Promise<Response> {

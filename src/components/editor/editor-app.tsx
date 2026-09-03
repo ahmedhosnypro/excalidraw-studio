@@ -44,7 +44,7 @@ async function applyScene(
 export function EditorApp() {
   const { data: meData, loading: meLoading } = useQuery<MeQueryData>(ME_QUERY);
   const user = meData?.me ?? null;
-  const { data: filesData } = useQuery<FilesQueryData>(FILES_QUERY, {
+  const { data: filesData, loading: filesLoading } = useQuery<FilesQueryData>(FILES_QUERY, {
     skip: !user,
   });
   const files = filesData?.files ?? [];
@@ -56,10 +56,15 @@ export function EditorApp() {
 
   const bootstrappedRef = useRef(false);
   const openFileRef = useRef<(file: FileGql) => Promise<void>>(async () => undefined);
+  const reopenFileId = useEditorStore((state) => state.reopenFileId);
 
   const openFile = async (file: FileGql): Promise<void> => {
     const store = useEditorStore.getState();
     await store.flushSave?.();
+    // Discard anything captured after the flush (e.g. the mount-time empty
+    // snapshot) — it belongs to no longer-open state and must not be written
+    // over the file we are about to load into.
+    store.cancelSave?.();
     store.setLoadingScene(true);
     store.openFile(file.id, file.name);
     try {
@@ -78,23 +83,53 @@ export function EditorApp() {
 
   openFileRef.current = openFile;
 
+  // The canvas (re)mounted while a file was open (HMR / dynamic chunk
+  // reload): re-load and re-apply that file's scene so the drawing reappears
+  // instead of the fresh empty canvas silently replacing it.
+  useEffect(() => {
+    if (!reopenFileId) {
+      return;
+    }
+    const store = useEditorStore.getState();
+    const name = store.activeFileName ?? "Untitled";
+    store.clearReopen();
+    void openFileRef.current({ id: reopenFileId, name });
+  }, [reopenFileId]);
+
   // Initial bootstrap: open the most recent file (authed) or the guest scene.
+  // For signed-in users we wait for the files query to settle — otherwise the
+  // canvas can mount before the list arrives and the race would skip opening.
   useEffect(() => {
     if (meLoading || bootstrappedRef.current || !excalidrawApi) {
       return;
     }
-    bootstrappedRef.current = true;
-    if (user && files.length > 0) {
-      void openFileRef.current(files[0]);
+    if (user) {
+      if (filesLoading) {
+        return;
+      }
+      bootstrappedRef.current = true;
+      if (files.length > 0) {
+        void openFileRef.current(files[0]);
+      }
       return;
     }
-    if (!user) {
-      const guest = loadGuestScene();
-      if (guest && guest.data.elements.length > 0) {
-        void applyScene(guest.data.elements, guest.data.appState, guest.data.files);
-      }
+    bootstrappedRef.current = true;
+    const guest = loadGuestScene();
+    if (guest && guest.data.elements.length > 0) {
+      void (async () => {
+        const guestStore = useEditorStore.getState();
+        // Drop the mount-time empty snapshot so its debounce can never
+        // overwrite the guest draft we are about to re-apply.
+        guestStore.cancelSave?.();
+        guestStore.setLoadingScene(true);
+        try {
+          await applyScene(guest.data.elements, guest.data.appState, guest.data.files);
+        } finally {
+          useEditorStore.getState().setLoadingScene(false);
+        }
+      })();
     }
-  }, [meLoading, user, files, excalidrawApi]);
+  }, [meLoading, filesLoading, user, files, excalidrawApi]);
 
   // Global hotkeys owned by the studio shell.
   useEffect(() => {

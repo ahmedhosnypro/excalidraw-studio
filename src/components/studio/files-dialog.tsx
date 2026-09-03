@@ -3,6 +3,7 @@
 import { useMutation, useQuery } from "@apollo/client/react";
 import { Copy, FilePlus2, FolderOpen, MoreHorizontal, Pencil, Search, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+import { FileThumbnail } from "@/components/studio/file-thumbnail";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -36,31 +37,8 @@ import {
   ME_QUERY,
   RENAME_FILE_MUTATION,
 } from "@/lib/graphql/operations";
+import { formatRelativeDate } from "@/lib/time";
 import { useEditorStore } from "@/store/editor-store";
-
-function formatRelativeDate(iso: string | undefined): string {
-  if (!iso) {
-    return "";
-  }
-  const date = new Date(iso);
-  const diffMs = Date.now() - date.getTime();
-  const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) {
-    return "just now";
-  }
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return `${hours}h ago`;
-  }
-  const days = Math.floor(hours / 24);
-  if (days < 30) {
-    return `${days}d ago`;
-  }
-  return date.toLocaleDateString();
-}
 
 function FileRow({
   file,
@@ -148,8 +126,10 @@ function FileRow({
 
   return (
     <div
-      className={`group flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors ${
-        active ? "border-primary/50 bg-primary/5" : "border-transparent hover:bg-muted/60"
+      className={`group flex items-center gap-2.5 rounded-lg border px-2.5 py-2 transition-colors ${
+        active
+          ? "border-primary/50 bg-primary/5 ring-1 ring-primary/20"
+          : "border-transparent hover:bg-muted/60"
       }`}
     >
       {renaming ? (
@@ -171,16 +151,19 @@ function FileRow({
           maxLength={200}
         />
       ) : (
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left"
-          onClick={() => onOpen(file)}
-        >
-          <span className="truncate text-sm font-medium">{file.name}</span>
-          <span className="text-xs text-muted-foreground">
-            {formatRelativeDate(file.updatedAt)}
-          </span>
-        </button>
+        <>
+          <FileThumbnail fileId={file.id} name={file.name} />
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left"
+            onClick={() => onOpen(file)}
+          >
+            <span className="truncate text-sm font-medium">{file.name}</span>
+            <span className="text-xs text-muted-foreground">
+              {formatRelativeDate(file.updatedAt)}
+            </span>
+          </button>
+        </>
       )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

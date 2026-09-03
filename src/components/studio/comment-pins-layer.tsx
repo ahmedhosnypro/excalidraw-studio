@@ -41,6 +41,17 @@ export function CommentPinsLayer({ fileId }: { fileId: string | null }) {
     [data?.comments],
   );
 
+  /** Replies per top-level comment — shown as a count badge on pins. */
+  const replyCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const comment of data?.comments ?? []) {
+      if (comment.parentId !== null) {
+        counts.set(comment.parentId, (counts.get(comment.parentId) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [data?.comments]);
+
   const handlePinClick = useCallback(
     (commentId: string) => {
       const openSidebar = excalidrawApi?.getAppState().openSidebar;
@@ -73,6 +84,7 @@ export function CommentPinsLayer({ fileId }: { fileId: string | null }) {
           return null;
         }
         const highlighted = highlightedCommentId === comment.id;
+        const replies = replyCounts.get(comment.id) ?? 0;
         return (
           <button
             key={comment.id}
@@ -86,7 +98,7 @@ export function CommentPinsLayer({ fileId }: { fileId: string | null }) {
             )}
             style={{ left, top }}
             onClick={() => handlePinClick(comment.id)}
-            aria-label={`Comment by ${comment.author?.name ?? "unknown"}: ${comment.body.slice(0, 60)}${comment.body.length > 60 ? "…" : ""}`}
+            aria-label={`Comment by ${comment.author?.name ?? "unknown"}: ${comment.body.slice(0, 60)}${comment.body.length > 60 ? "…" : ""}${replies > 0 ? ` (${replies} ${replies === 1 ? "reply" : "replies"})` : ""}`}
             title={comment.body.slice(0, 120)}
           >
             {comment.resolved ? (
@@ -94,6 +106,14 @@ export function CommentPinsLayer({ fileId }: { fileId: string | null }) {
             ) : (
               <MessageCircle className="h-3.5 w-3.5" aria-hidden />
             )}
+            {replies > 0 ? (
+              <span
+                className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full border border-background bg-foreground px-1 text-[9px] font-bold leading-none text-background"
+                aria-hidden
+              >
+                {replies}
+              </span>
+            ) : null}
           </button>
         );
       })}

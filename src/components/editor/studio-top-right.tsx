@@ -43,6 +43,16 @@ function SaveStatusChip() {
       };
     }
     switch (saveStatus) {
+      // A cloud file with nothing pending reads as synced — the chip never
+      // disappears between saves.
+      case "idle":
+      case "saved":
+        return {
+          icon: <Check className="h-3.5 w-3.5" aria-hidden />,
+          label: "Saved",
+          className:
+            "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800",
+        };
       case "saving":
         return {
           icon: <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />,
@@ -62,13 +72,6 @@ function SaveStatusChip() {
           icon: <RefreshCw className="h-3.5 w-3.5" aria-hidden />,
           label: "Save failed — retrying",
           className: "bg-destructive/10 text-destructive border-destructive/30",
-        };
-      case "saved":
-        return {
-          icon: <Check className="h-3.5 w-3.5" aria-hidden />,
-          label: "Saved",
-          className:
-            "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800",
         };
       default:
         return null;
