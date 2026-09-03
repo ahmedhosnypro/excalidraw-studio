@@ -1,28 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import { Frame, Play, Presentation as PresentationIcon, RefreshCw } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Frame, Play, Presentation as PresentationIcon, RefreshCw } from "lucide-react";
 
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
-
-import { useEditorStore, type PresentationSlide } from "@/store/editor-store";
-
-interface FrameInfo {
-  id: string;
-  name: string;
-  x: number;
-  y: number;
-  elements: ExcalidrawElement[];
-}
+import { type PresentationSlide, useEditorStore } from "@/store/editor-store";
 
 /**
  * Builds presentation slides from the scene: one slide per frame (ordered
  * top-to-bottom, left-to-right); frame-less content becomes a single slide.
  */
-export function buildSlides(elements: readonly ExcalidrawElement[]): PresentationSlide[] {
+function buildSlides(elements: readonly ExcalidrawElement[]): PresentationSlide[] {
   const frames = elements.filter(
     (element): element is Extract<ExcalidrawElement, { type: "frame" }> =>
       element.type === "frame" && !element.isDeleted,
@@ -39,10 +29,7 @@ export function buildSlides(elements: readonly ExcalidrawElement[]): Presentatio
   const sorted = [...frames].sort((a, b) => a.y - b.y || a.x - b.x);
   return sorted.map((frame, index) => {
     const children = elements.filter(
-      (element) =>
-        !element.isDeleted &&
-        element.id !== frame.id &&
-        element.frameId === frame.id,
+      (element) => !element.isDeleted && element.id !== frame.id && element.frameId === frame.id,
     );
     return {
       id: frame.id,
@@ -54,21 +41,23 @@ export function buildSlides(elements: readonly ExcalidrawElement[]): Presentatio
 
 export function PresentTab({ fileId }: { fileId: string | null }) {
   void fileId;
-  const [slides, setSlides] = useState<PresentationSlide[]>([]);
+  const [snapshot, setSnapshot] = useState<readonly ExcalidrawElement[] | null>(null);
   const excalidrawApi = useEditorStore((state) => state.excalidrawApi);
   const startPresentation = useEditorStore((state) => state.startPresentation);
+
+  // Slides derive from the live scene (or the latest manual snapshot).
+  const slides = useMemo(() => {
+    const source = snapshot ?? excalidrawApi?.getSceneElements();
+    return source ? buildSlides(source) : [];
+  }, [snapshot, excalidrawApi]);
 
   const refreshSlides = useCallback(() => {
     const api = useEditorStore.getState().excalidrawApi;
     if (!api) {
       return;
     }
-    setSlides(buildSlides(api.getSceneElements()));
+    setSnapshot(api.getSceneElements());
   }, []);
-
-  useEffect(() => {
-    refreshSlides();
-  }, [refreshSlides, excalidrawApi]);
 
   const handlePlay = useCallback(() => {
     if (slides.length === 0) {
@@ -96,8 +85,8 @@ export function PresentTab({ fileId }: { fileId: string | null }) {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Present your drawing as slides — one slide per frame. Draw a frame
-        around content to create a slide.
+        Present your drawing as slides — one slide per frame. Draw a frame around content to create
+        a slide.
       </p>
 
       <Button onClick={handlePlay} disabled={slides.length === 0} className="gap-1.5">

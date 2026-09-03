@@ -1,14 +1,9 @@
 "use client";
 
 import { serializeAsJSON } from "@excalidraw/excalidraw";
-
-import type { SceneDataInput } from "@/lib/graphql/operations";
-import type {
-  AppState,
-  BinaryFileData,
-  BinaryFiles,
-} from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import type { AppState, BinaryFileData, BinaryFiles } from "@excalidraw/excalidraw/types";
+import type { SceneDataInput } from "@/lib/graphql/operations";
 
 const GUEST_SCENE_KEY = "studio:guest-scene";
 
@@ -70,9 +65,7 @@ export function clearGuestScene(): void {
 }
 
 /** Converts a scene `files` map into the array shape `initialData.files` wants. */
-export function sceneFilesToArray(
-  files: Record<string, unknown> | undefined,
-): BinaryFileData[] {
+export function sceneFilesToArray(files: Record<string, unknown> | undefined): BinaryFileData[] {
   if (!files) {
     return [];
   }

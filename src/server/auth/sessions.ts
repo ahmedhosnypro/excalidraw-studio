@@ -1,12 +1,12 @@
 import { and, eq, gt } from "drizzle-orm";
 
 import { db } from "@/db";
-import { sessions, users, type UserRow } from "@/db/schema";
+import { sessions, type UserRow, users } from "@/db/schema";
 
 const SESSION_TTL_DAYS = 30;
 const TOKEN_BYTES = 32;
 
-export const SESSION_COOKIE = "studio_session";
+const SESSION_COOKIE = "studio_session";
 
 function base64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -17,10 +17,7 @@ function base64Url(bytes: Uint8Array): string {
 }
 
 async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(value),
-  );
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
@@ -36,14 +33,10 @@ export interface SessionCookieSpec {
  * Creates a session row for the user and returns the opaque token together
  * with the cookie attributes to apply on the HTTP response.
  */
-export async function createSession(
-  userId: string,
-): Promise<SessionCookieSpec> {
+export async function createSession(userId: string): Promise<SessionCookieSpec> {
   const token = base64Url(crypto.getRandomValues(new Uint8Array(TOKEN_BYTES)));
   const tokenHash = await sha256Hex(token);
-  const expiresAt = new Date(
-    Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000,
-  );
+  const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
 
   await db.insert(sessions).values({ userId, tokenHash, expiresAt });
 
@@ -55,9 +48,7 @@ export async function createSession(
 }
 
 /** Resolves the user owning a valid (non-expired) session token. */
-export async function resolveSessionUser(
-  token: string | undefined,
-): Promise<UserRow | null> {
+export async function resolveSessionUser(token: string | undefined): Promise<UserRow | null> {
   if (!token) {
     return null;
   }
@@ -80,9 +71,7 @@ export async function destroySession(token: string | undefined): Promise<void> {
   await db.delete(sessions).where(eq(sessions.tokenHash, tokenHash));
 }
 
-export function readSessionCookie(
-  cookieHeader: string | undefined,
-): string | undefined {
+export function readSessionCookie(cookieHeader: string | undefined): string | undefined {
   if (!cookieHeader) {
     return undefined;
   }

@@ -1,19 +1,13 @@
 "use client";
 
 import { useApolloClient } from "@apollo/client/react";
-import { useCallback, useEffect, useRef } from "react";
-
-import { SAVE_SCENE_MUTATION } from "@/lib/graphql/operations";
-import type { FileGql } from "@/lib/graphql/operations";
-import type { SceneDataInput } from "@/lib/graphql/operations";
-import {
-  buildSceneInput,
-  saveGuestScene,
-} from "@/lib/scene-persistence";
-import { useEditorStore } from "@/store/editor-store";
-
-import type { AppState, BinaryFiles } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import type { AppState, BinaryFiles } from "@excalidraw/excalidraw/types";
+import { useCallback, useEffect, useRef } from "react";
+import type { FileGql, SceneDataInput } from "@/lib/graphql/operations";
+import { SAVE_SCENE_MUTATION } from "@/lib/graphql/operations";
+import { buildSceneInput, saveGuestScene } from "@/lib/scene-persistence";
+import { useEditorStore } from "@/store/editor-store";
 
 const SAVE_DEBOUNCE_MS = 1000;
 
@@ -22,9 +16,7 @@ const SAVE_DEBOUNCE_MS = 1000;
  * cloud file is open and the user is signed in; otherwise falls back to
  * localStorage for guests.
  */
-export function useAutosave(
-  isAuthenticated: boolean,
-): {
+export function useAutosave(isAuthenticated: boolean): {
   onSceneChange: (
     elements: readonly ExcalidrawElement[],
     appState: AppState,
@@ -37,10 +29,7 @@ export function useAutosave(
   const inFlightRef = useRef(false);
 
   const store = useEditorStore;
-  const getActiveFileId = useCallback(
-    () => store.getState().activeFileId,
-    [store],
-  );
+  const getActiveFileId = useCallback(() => store.getState().activeFileId, []);
   const isAuthenticatedRef = useRef(isAuthenticated);
   isAuthenticatedRef.current = isAuthenticated;
 
@@ -83,7 +72,7 @@ export function useAutosave(
       pendingRef.current = null;
       store.getState().setSaveStatus("saved");
     }
-  }, [client, getActiveFileId, store]);
+  }, [client, getActiveFileId]);
 
   const flush = useCallback(async (): Promise<void> => {
     if (timerRef.current) {
@@ -98,14 +87,10 @@ export function useAutosave(
     return () => {
       store.getState().registerFlushSave(null);
     };
-  }, [flush, store]);
+  }, [flush]);
 
   const onSceneChange = useCallback(
-    (
-      elements: readonly ExcalidrawElement[],
-      appState: AppState,
-      files: BinaryFiles,
-    ): void => {
+    (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles): void => {
       if (store.getState().loadingScene) {
         return;
       }
@@ -119,7 +104,7 @@ export function useAutosave(
         void performSave();
       }, SAVE_DEBOUNCE_MS);
     },
-    [performSave, store],
+    [performSave],
   );
 
   return { onSceneChange };

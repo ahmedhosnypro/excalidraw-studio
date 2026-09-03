@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-
-import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 
 import { useEditorStore } from "@/store/editor-store";
 
@@ -17,7 +16,17 @@ export function PresentationMode() {
   const stopPresentation = useEditorStore((state) => state.stopPresentation);
   const [slideIndex, setSlideIndex] = useState(0);
   const [chromeVisible, setChromeVisible] = useState(true);
+  const [wasPresenting, setWasPresenting] = useState(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Reset the slide counter at the moment presentation turns on (render-time
+  // state adjustment, per React's "you might not need an effect" guidance).
+  if (presenting !== wasPresenting) {
+    setWasPresenting(presenting);
+    if (presenting) {
+      setSlideIndex(0);
+    }
+  }
 
   const exit = useCallback(() => {
     const api = useEditorStore.getState().excalidrawApi;
@@ -51,9 +60,8 @@ export function PresentationMode() {
     }
     const api = useEditorStore.getState().excalidrawApi;
     api?.updateScene({
-      appState: { zenModeEnabled: true, viewModeEnabled: true },
+      appState: { zenModeEnabled: true, viewModeEnabled: true, openSidebar: null },
     });
-    setSlideIndex(0);
     const first = slides[0];
     if (api && first) {
       api.scrollToContent(first.elements, {
@@ -84,11 +92,7 @@ export function PresentationMode() {
         goToSlide(slideIndex + 1);
         return;
       }
-      if (
-        event.key === "ArrowLeft" ||
-        event.key === "ArrowUp" ||
-        event.key === "PageUp"
-      ) {
+      if (event.key === "ArrowLeft" || event.key === "ArrowUp" || event.key === "PageUp") {
         event.preventDefault();
         goToSlide(slideIndex - 1);
       }

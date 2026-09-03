@@ -42,8 +42,6 @@ function parseLiteralToValue(ast: ValueNode): unknown {
     case Kind.NULL:
       return null;
     default:
-      throw new GraphQLError(
-        `JSON scalar cannot represent value of kind ${ast.kind}`,
-      );
+      throw new GraphQLError(`JSON scalar cannot represent value of kind ${ast.kind}`);
   }
 }

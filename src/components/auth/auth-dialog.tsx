@@ -1,8 +1,8 @@
 "use client";
 
 import { useMutation, useQuery } from "@apollo/client/react";
+import { Loader2 } from "lucide-react";
 import { useState } from "react";
-
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,45 +14,46 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2 } from "lucide-react";
-
+import type {
+  AuthMutationData,
+  AuthMutationVariables,
+  FileMutationData,
+  FileMutationVariables,
+  MeQueryData,
+} from "@/lib/graphql/operations";
 import {
   LOGIN_MUTATION,
   ME_QUERY,
   MIGRATE_GUEST_SCENE_MUTATION,
   SIGNUP_MUTATION,
 } from "@/lib/graphql/operations";
-import type {
-  AuthMutationData,
-  AuthMutationVariables,
-  FileMutationData,
-  FileMutationVariables,
-} from "@/lib/graphql/operations";
-import type { MeQueryData } from "@/lib/graphql/operations";
-import { loadGuestScene, clearGuestScene } from "@/lib/scene-persistence";
+import { clearGuestScene, loadGuestScene } from "@/lib/scene-persistence";
 import { useEditorStore } from "@/store/editor-store";
 
-function AuthForm({
-  mode,
-  onDone,
-}: {
-  mode: "login" | "signup";
-  onDone: () => void;
-}) {
+function AuthForm({ mode, onDone }: { mode: "login" | "signup"; onDone: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const [login, { loading: loginLoading }] = useMutation<AuthMutationData, AuthMutationVariables>(LOGIN_MUTATION, {
-    refetchQueries: [{ query: ME_QUERY }, "Files"],
-  });
-  const [signup, { loading: signupLoading }] = useMutation<AuthMutationData, AuthMutationVariables>(SIGNUP_MUTATION, {
-    refetchQueries: [{ query: ME_QUERY }, "Files"],
-  });
-  const [migrateGuestScene] = useMutation<FileMutationData, FileMutationVariables>(MIGRATE_GUEST_SCENE_MUTATION, {
-    refetchQueries: ["Files"],
-  });
+  const [login, { loading: loginLoading }] = useMutation<AuthMutationData, AuthMutationVariables>(
+    LOGIN_MUTATION,
+    {
+      refetchQueries: [{ query: ME_QUERY }, "Files"],
+    },
+  );
+  const [signup, { loading: signupLoading }] = useMutation<AuthMutationData, AuthMutationVariables>(
+    SIGNUP_MUTATION,
+    {
+      refetchQueries: [{ query: ME_QUERY }, "Files"],
+    },
+  );
+  const [migrateGuestScene] = useMutation<FileMutationData, FileMutationVariables>(
+    MIGRATE_GUEST_SCENE_MUTATION,
+    {
+      refetchQueries: ["Files"],
+    },
+  );
 
   const loading = mode === "login" ? loginLoading : signupLoading;
 
@@ -137,9 +138,7 @@ function AuthForm({
         ) : null}
       </div>
       {error ? (
-        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error}
-        </p>
+        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
       ) : null}
       <Button type="submit" disabled={loading}>
         {loading ? (

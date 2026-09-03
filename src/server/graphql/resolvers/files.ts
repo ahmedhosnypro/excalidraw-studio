@@ -2,17 +2,17 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { files, type FileRow } from "@/db/schema";
+import { type FileRow, files } from "@/db/schema";
+import { gqlError } from "@/server/graphql/errors";
 import type { FileOutput } from "@/server/graphql/types";
 import { toFileOutput } from "@/server/graphql/types";
-import { gqlError } from "@/server/graphql/errors";
 import {
   copyScene,
   emptyScene,
+  type SceneDataInput,
   sceneStorageKey,
   validateSceneData,
   writeScene,
-  type SceneDataInput,
 } from "@/server/scenes";
 import { storage } from "@/server/storage";
 
@@ -25,19 +25,13 @@ const fileNameSchema = z
 export function parseFileName(value: unknown): string {
   const parsed = fileNameSchema.safeParse(value);
   if (!parsed.success) {
-    throw gqlError(
-      "BAD_USER_INPUT",
-      parsed.error.issues[0]?.message ?? "Invalid file name",
-    );
+    throw gqlError("BAD_USER_INPUT", parsed.error.issues[0]?.message ?? "Invalid file name");
   }
   return parsed.data;
 }
 
 /** Fetches a file row owned by the user or throws NOT_FOUND. */
-export async function requireOwnedFile(
-  fileId: string,
-  userId: string,
-): Promise<FileRow> {
+export async function requireOwnedFile(fileId: string, userId: string): Promise<FileRow> {
   const rows = await db
     .select()
     .from(files)
@@ -96,16 +90,11 @@ export async function renameFile(
 export async function deleteFile(userId: string, fileId: string): Promise<boolean> {
   const row = await requireOwnedFile(fileId, userId);
   await storage.delete(row.storageKey);
-  await db
-    .delete(files)
-    .where(and(eq(files.id, fileId), eq(files.userId, userId)));
+  await db.delete(files).where(and(eq(files.id, fileId), eq(files.userId, userId)));
   return true;
 }
 
-export async function duplicateFile(
-  userId: string,
-  fileId: string,
-): Promise<FileOutput> {
+export async function duplicateFile(userId: string, fileId: string): Promise<FileOutput> {
   const row = await requireOwnedFile(fileId, userId);
   const copy = await createFile(userId, `Copy of ${row.name}`);
   await copyScene(row.storageKey, sceneStorageKey(userId, copy.id));

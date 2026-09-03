@@ -3,8 +3,8 @@ import { z } from "zod";
 import { gqlError } from "@/server/graphql/errors";
 import { storage } from "@/server/storage";
 
-export const SCENE_SOURCE = "excalidraw-studio";
-export const SCENE_VERSION = 2;
+const SCENE_SOURCE = "excalidraw-studio";
+const SCENE_VERSION = 2;
 
 /** Hard cap on serialized scene size (10 MB) — protects storage + parser. */
 const MAX_SCENE_BYTES = 10 * 1024 * 1024;
@@ -32,9 +32,11 @@ const sceneSchema = z.object({
 });
 
 /** Validates an untrusted scene payload coming from a client. */
-export function validateSceneData(
-  data: unknown,
-): { elements: unknown[]; appState: Record<string, unknown>; files: Record<string, unknown> } {
+export function validateSceneData(data: unknown): {
+  elements: unknown[];
+  appState: Record<string, unknown>;
+  files: Record<string, unknown>;
+} {
   const parsed = sceneSchema.safeParse(data);
   if (!parsed.success) {
     throw gqlError(
@@ -74,17 +76,12 @@ export async function writeScene(
   };
   const serialized = JSON.stringify(payload);
   if (serialized.length > MAX_SCENE_BYTES) {
-    throw gqlError(
-      "BAD_USER_INPUT",
-      "Scene is too large to save (10 MB limit).",
-    );
+    throw gqlError("BAD_USER_INPUT", "Scene is too large to save (10 MB limit).");
   }
   await storage.put(storageKey, serialized);
 }
 
-export async function readScene(
-  storageKey: string,
-): Promise<ScenePayload | null> {
+export async function readScene(storageKey: string): Promise<ScenePayload | null> {
   const raw = await storage.get(storageKey);
   if (!raw) {
     return null;
@@ -96,10 +93,7 @@ export async function readScene(
   }
 }
 
-export async function copyScene(
-  fromKey: string,
-  toKey: string,
-): Promise<boolean> {
+export async function copyScene(fromKey: string, toKey: string): Promise<boolean> {
   const raw = await storage.get(fromKey);
   if (!raw) {
     return false;

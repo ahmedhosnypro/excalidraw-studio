@@ -1,23 +1,9 @@
 "use client";
 
-import { useMutation } from "@apollo/client/react";
-import { useTheme } from "next-themes";
-import { useCallback, useEffect, useMemo, useState } from "react";
-
-import {
-  CommandDialog,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-} from "@/components/ui/command";
-import type { AppState, ToolType } from "@excalidraw/excalidraw/types";
 import { serializeAsJSON } from "@excalidraw/excalidraw";
+import type { AppState, ToolType } from "@excalidraw/excalidraw/types";
 import {
   ArrowUpRight,
-  Plus,
   Circle,
   ClipboardList,
   Copy,
@@ -33,13 +19,13 @@ import {
   Image as ImageIcon,
   LogIn,
   LogOut,
-  ZoomIn,
   MessageCircle,
   Minus,
   Moon,
   MoveUpRight,
   Pencil,
   Play,
+  Plus,
   Presentation,
   Redo2,
   Save,
@@ -50,19 +36,21 @@ import {
   Undo2,
   Waypoints,
   Zap,
+  ZoomIn,
 } from "lucide-react";
-
+import { useTheme } from "next-themes";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  CREATE_FILE_MUTATION,
-  LOGOUT_MUTATION,
-  ME_QUERY,
-} from "@/lib/graphql/operations";
-import type {
-  FileGql,
-  FileMutationData,
-  FileMutationVariables,
-  UserGql,
-} from "@/lib/graphql/operations";
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from "@/components/ui/command";
+import { useStudioMutations } from "@/hooks/use-studio-mutations";
+import type { FileGql, UserGql } from "@/lib/graphql/operations";
 import { useEditorStore } from "@/store/editor-store";
 
 /** Dispatches a keyboard shortcut onto the canvas so the package handles it. */
@@ -70,8 +58,7 @@ function canvasShortcut(
   key: string,
   options: { ctrl?: boolean; shift?: boolean; alt?: boolean } = {},
 ): void {
-  const target =
-    document.querySelector<HTMLElement>(".excalidraw") ?? document.body;
+  const target = document.querySelector<HTMLElement>(".excalidraw") ?? document.body;
   target.dispatchEvent(
     new KeyboardEvent("keydown", {
       key,
@@ -96,12 +83,7 @@ function downloadSceneFile(): void {
     return;
   }
   const name = useEditorStore.getState().activeFileName ?? "untitled";
-  const json = serializeAsJSON(
-    api.getSceneElements(),
-    api.getAppState(),
-    api.getFiles(),
-    "local",
-  );
+  const json = serializeAsJSON(api.getSceneElements(), api.getAppState(), api.getFiles(), "local");
   const blob = new Blob([json], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -153,12 +135,7 @@ export function CommandPalette({
 }) {
   const [open, setOpen] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
-  const [createFile] = useMutation<FileMutationData, FileMutationVariables>(CREATE_FILE_MUTATION, {
-    refetchQueries: [{ query: ME_QUERY }, "Files"],
-  });
-  const [logout] = useMutation<{ logout: boolean }, Record<string, never>>(LOGOUT_MUTATION, {
-    refetchQueries: [{ query: ME_QUERY }, "Files"],
-  });
+  const { createFile, logout } = useStudioMutations();
 
   // Global palette shortcuts: Ctrl+K, Ctrl+/ and Ctrl+Shift+P.
   useEffect(() => {
@@ -179,13 +156,10 @@ export function CommandPalette({
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const run = useCallback(
-    (perform: () => void) => {
-      setOpen(false);
-      perform();
-    },
-    [],
-  );
+  const run = useCallback((perform: () => void) => {
+    setOpen(false);
+    perform();
+  }, []);
 
   const handleNewFile = useCallback(async (): Promise<void> => {
     try {
@@ -286,9 +260,7 @@ export function CommandPalette({
         perform: () =>
           useEditorStore
             .getState()
-            .openAuthDialog(
-              "Sign in to save your drawings to the cloud and switch between files.",
-            ),
+            .openAuthDialog("Sign in to save your drawings to the cloud and switch between files."),
       });
     }
 
@@ -358,8 +330,7 @@ export function CommandPalette({
         icon: <ZoomIn />,
         shortcut: "Ctrl+0",
         keywords: "zoom reset 100",
-        perform: () =>
-          updateAppState({ zoom: { value: 1 as AppState["zoom"]["value"] } }),
+        perform: () => updateAppState({ zoom: { value: 1 as AppState["zoom"]["value"] } }),
       },
       {
         id: "zoom-fit",
@@ -382,8 +353,7 @@ export function CommandPalette({
         icon: <Eye />,
         shortcut: "Alt+Z",
         keywords: "zen focus hide ui",
-        perform: () =>
-          updateAppState({ zenModeEnabled: !appState?.zenModeEnabled }),
+        perform: () => updateAppState({ zenModeEnabled: !appState?.zenModeEnabled }),
       },
       {
         id: "view-mode",
@@ -391,8 +361,7 @@ export function CommandPalette({
         icon: <Eye />,
         shortcut: "Alt+R",
         keywords: "view read only readonly",
-        perform: () =>
-          updateAppState({ viewModeEnabled: !appState?.viewModeEnabled }),
+        perform: () => updateAppState({ viewModeEnabled: !appState?.viewModeEnabled }),
       },
       {
         id: "grid",
@@ -400,8 +369,7 @@ export function CommandPalette({
         icon: <Grid3x3 />,
         shortcut: "Ctrl+'",
         keywords: "grid toggle background",
-        perform: () =>
-          updateAppState({ gridModeEnabled: !appState?.gridModeEnabled }),
+        perform: () => updateAppState({ gridModeEnabled: !appState?.gridModeEnabled }),
       },
       {
         id: "snap",
@@ -464,9 +432,7 @@ export function CommandPalette({
       shortcut: tool.shortcut,
       keywords: `tool ${tool.type}`,
       perform: () => {
-        useEditorStore
-          .getState()
-          .excalidrawApi?.setActiveTool({ type: tool.type });
+        useEditorStore.getState().excalidrawApi?.setActiveTool({ type: tool.type });
       },
     }));
   }, []);
@@ -521,58 +487,52 @@ export function CommandPalette({
   );
 
   return (
-    <>
-      <CommandDialog open={open} onOpenChange={setOpen}>
-        <CommandInput placeholder="Search menus, commands, and discover hidden gems…" />
-        <CommandList>
-          <CommandEmpty>No results found.</CommandEmpty>
+    <CommandDialog open={open} onOpenChange={setOpen}>
+      <CommandInput placeholder="Search menus, commands, and discover hidden gems…" />
+      <CommandList>
+        <CommandEmpty>No results found.</CommandEmpty>
 
-          <CommandGroup heading="App">
-            {appCommands.map((command) => (
-              <PaletteRow
-                key={command.id}
-                command={command}
-                onRun={run}
-              />
-            ))}
-          </CommandGroup>
-          <CommandSeparator />
-          <CommandGroup heading="Export">
-            {exportCommands.map((command) => (
-              <PaletteRow key={command.id} command={command} onRun={run} />
-            ))}
-          </CommandGroup>
-          <CommandSeparator />
-          <CommandGroup heading="Editor">
-            {editorCommands.map((command) => (
-              <PaletteRow key={command.id} command={command} onRun={run} />
-            ))}
-          </CommandGroup>
-          <CommandSeparator />
-          <CommandGroup heading="Tools">
-            {toolCommands.map((command) => (
-              <PaletteRow key={command.id} command={command} onRun={run} />
-            ))}
-          </CommandGroup>
-          <CommandSeparator />
-          <CommandGroup heading="Elements">
-            {elementCommands.map((command) => (
-              <PaletteRow key={command.id} command={command} onRun={run} />
-            ))}
-          </CommandGroup>
-          {fileCommands.length > 0 ? (
-            <>
-              <CommandSeparator />
-              <CommandGroup heading="Files">
-                {fileCommands.map((command) => (
-                  <PaletteRow key={command.id} command={command} onRun={run} />
-                ))}
-              </CommandGroup>
-            </>
-          ) : null}
-        </CommandList>
-      </CommandDialog>
-    </>
+        <CommandGroup heading="App">
+          {appCommands.map((command) => (
+            <PaletteRow key={command.id} command={command} onRun={run} />
+          ))}
+        </CommandGroup>
+        <CommandSeparator />
+        <CommandGroup heading="Export">
+          {exportCommands.map((command) => (
+            <PaletteRow key={command.id} command={command} onRun={run} />
+          ))}
+        </CommandGroup>
+        <CommandSeparator />
+        <CommandGroup heading="Editor">
+          {editorCommands.map((command) => (
+            <PaletteRow key={command.id} command={command} onRun={run} />
+          ))}
+        </CommandGroup>
+        <CommandSeparator />
+        <CommandGroup heading="Tools">
+          {toolCommands.map((command) => (
+            <PaletteRow key={command.id} command={command} onRun={run} />
+          ))}
+        </CommandGroup>
+        <CommandSeparator />
+        <CommandGroup heading="Elements">
+          {elementCommands.map((command) => (
+            <PaletteRow key={command.id} command={command} onRun={run} />
+          ))}
+        </CommandGroup>
+        {fileCommands.length > 0 ? (
+          <>
+            <CommandSeparator />
+            <CommandGroup heading="Files">
+              {fileCommands.map((command) => (
+                <PaletteRow key={command.id} command={command} onRun={run} />
+              ))}
+            </CommandGroup>
+          </>
+        ) : null}
+      </CommandList>
+    </CommandDialog>
   );
 }
 

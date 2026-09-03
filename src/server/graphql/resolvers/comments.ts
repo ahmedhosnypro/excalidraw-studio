@@ -2,9 +2,9 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { comments, files, users, type CommentRow } from "@/db/schema";
+import { type CommentRow, comments, files, users } from "@/db/schema";
 import { gqlError } from "@/server/graphql/errors";
-import { toCommentOutput, type CommentOutput } from "@/server/graphql/types";
+import { type CommentOutput, toCommentOutput } from "@/server/graphql/types";
 import { requireOwnedFile } from "./files";
 
 const bodySchema = z
@@ -18,10 +18,7 @@ const coordinateSchema = z.number().finite().nullable();
 function parseBody(value: unknown): string {
   const parsed = bodySchema.safeParse(value);
   if (!parsed.success) {
-    throw gqlError(
-      "BAD_USER_INPUT",
-      parsed.error.issues[0]?.message ?? "Invalid comment body",
-    );
+    throw gqlError("BAD_USER_INPUT", parsed.error.issues[0]?.message ?? "Invalid comment body");
   }
   return parsed.data;
 }
@@ -36,15 +33,20 @@ interface CommentWithAuthor {
   author: { id: string; name: string } | null;
 }
 
-async function fetchCommentWithAuthor(
-  commentId: string,
-): Promise<CommentWithAuthor | null> {
+/** Shared select shape for comment rows joined with their author. */
+const commentWithAuthor = {
+  comment: comments,
+  authorId: users.id,
+  authorName: users.name,
+};
+
+function authorOf(row: { authorId: string | null; authorName: string | null }) {
+  return row.authorId ? { id: row.authorId, name: row.authorName ?? "" } : null;
+}
+
+async function fetchCommentWithAuthor(commentId: string): Promise<CommentWithAuthor | null> {
   const rows = await db
-    .select({
-      comment: comments,
-      authorId: users.id,
-      authorName: users.name,
-    })
+    .select(commentWithAuthor)
     .from(comments)
     .leftJoin(users, eq(comments.userId, users.id))
     .where(eq(comments.id, commentId))
@@ -53,34 +55,19 @@ async function fetchCommentWithAuthor(
   if (!row) {
     return null;
   }
-  return {
-    comment: row.comment,
-    author: row.authorId ? { id: row.authorId, name: row.authorName ?? "" } : null,
-  };
+  return { comment: row.comment, author: authorOf(row) };
 }
 
 /** Lists comments of a viewer-owned file, oldest first, with author info. */
-export async function listComments(
-  userId: string,
-  fileId: string,
-): Promise<CommentOutput[]> {
+export async function listComments(userId: string, fileId: string): Promise<CommentOutput[]> {
   await requireOwnedFile(fileId, userId);
   const rows = await db
-    .select({
-      comment: comments,
-      authorId: users.id,
-      authorName: users.name,
-    })
+    .select(commentWithAuthor)
     .from(comments)
     .leftJoin(users, eq(comments.userId, users.id))
     .where(eq(comments.fileId, fileId))
     .orderBy(comments.createdAt);
-  return rows.map((row) =>
-    toCommentOutput(
-      row.comment,
-      row.authorId ? { id: row.authorId, name: row.authorName ?? "" } : null,
-    ),
-  );
+  return rows.map((row) => toCommentOutput(row.comment, authorOf(row)));
 }
 
 export async function addComment(
@@ -172,10 +159,7 @@ export async function resolveComment(
   return toCommentOutput(row, found.author);
 }
 
-export async function deleteComment(
-  userId: string,
-  commentId: string,
-): Promise<boolean> {
+export async function deleteComment(userId: string, commentId: string): Promise<boolean> {
   const found = await fetchCommentWithAuthor(commentId);
   if (!found) {
     throw gqlError("NOT_FOUND", "Comment not found.");

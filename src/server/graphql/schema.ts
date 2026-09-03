@@ -1,11 +1,11 @@
 import { buildSchema } from "drizzle-graphql";
 import {
   GraphQLBoolean,
-  GraphQLFieldConfig,
+  type GraphQLFieldConfig,
   GraphQLFloat,
   GraphQLID,
-  GraphQLInputType,
   GraphQLInputObjectType,
+  type GraphQLInputType,
   GraphQLList,
   GraphQLNonNull,
   GraphQLObjectType,
@@ -14,19 +14,17 @@ import {
 } from "graphql";
 
 import { db } from "@/db";
+import { emptyScene, readScene } from "@/server/scenes";
 import type { ApolloContext } from "./context";
 import { assertAuthenticated } from "./errors";
-import { GraphQLJSON } from "./scalars";
-import {
-  CommentType,
-  SceneDataType,
-  UserType,
-  toCommentOutput,
-  toUserOutput,
-  type SceneDataOutput,
-} from "./types";
-import { emptyScene, readScene } from "@/server/scenes";
 import { loginMutation, logoutMutation, signupMutation } from "./resolvers/auth";
+import {
+  addComment,
+  deleteComment,
+  listComments,
+  resolveComment,
+  updateComment,
+} from "./resolvers/comments";
 import {
   createFile,
   deleteFile,
@@ -37,13 +35,8 @@ import {
   requireOwnedFile,
   saveScene,
 } from "./resolvers/files";
-import {
-  addComment,
-  deleteComment,
-  listComments,
-  resolveComment,
-  updateComment,
-} from "./resolvers/comments";
+import { GraphQLJSON } from "./scalars";
+import { CommentType, type SceneDataOutput, SceneDataType, toUserOutput, UserType } from "./types";
 
 // ---------------------------------------------------------------------------
 // drizzle-graphql: generated entities (types, filters, queries).
@@ -76,9 +69,10 @@ function scopeGeneratedQueryToViewer(
   return {
     type: field.type as GraphQLFieldConfig<unknown, ApolloContext>["type"],
     args: field.args as GraphQLFieldConfig<unknown, ApolloContext>["args"],
-    description: field === generated.entities.queries.files
-      ? "Lists the viewer's files (server forces ownership filter)."
-      : "Fetches a single file of the viewer (server forces ownership filter).",
+    description:
+      field === generated.entities.queries.files
+        ? "Lists the viewer's files (server forces ownership filter)."
+        : "Fetches a single file of the viewer (server forces ownership filter).",
     resolve: (source, args, context, info) => {
       assertAuthenticated(context.userId);
       const scoped = {
@@ -114,8 +108,7 @@ const sceneDataInput = new GraphQLInputObjectType({
 const meQuery: GraphQLFieldConfig<unknown, ApolloContext> = {
   type: UserType,
   description: "The currently signed-in user, or null for guests.",
-  resolve: (_source, _args, context) =>
-    context.user ? toUserOutput(context.user) : null,
+  resolve: (_source, _args, context) => (context.user ? toUserOutput(context.user) : null),
 };
 
 const sceneQuery: GraphQLFieldConfig<unknown, ApolloContext> = {
@@ -187,11 +180,7 @@ const renameFileMutation = fileMutationConfig(
   },
   (_source, args, context) => {
     assertAuthenticated(context.userId);
-    return renameFile(
-      context.userId,
-      String(args.id),
-      parseFileName(args.name),
-    );
+    return renameFile(context.userId, String(args.id), parseFileName(args.name));
   },
 );
 
@@ -258,14 +247,7 @@ const addCommentMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
   resolve: (_source, args, context) => {
     assertAuthenticated(context.userId);
     const authorName = context.user?.name ?? "";
-    return addComment(
-      context.userId,
-      authorName,
-      String(args.fileId),
-      args.body,
-      args.x,
-      args.y,
-    );
+    return addComment(context.userId, authorName, String(args.fileId), args.body, args.x, args.y);
   },
 };
 
@@ -315,9 +297,7 @@ export const schema = new GraphQLSchema({
     fields: {
       me: meQuery,
       files: scopeGeneratedQueryToViewer(generated.entities.queries.files),
-      filesSingle: scopeGeneratedQueryToViewer(
-        generated.entities.queries.filesSingle,
-      ),
+      filesSingle: scopeGeneratedQueryToViewer(generated.entities.queries.filesSingle),
       scene: sceneQuery,
       comments: commentsQuery,
     },

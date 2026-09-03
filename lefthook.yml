@@ -1,42 +1,25 @@
-# EXAMPLE USAGE:
-#
-#   Refer for explanation to following link:
-#   https://lefthook.dev/configuration/
-#
-# pre-push:
-#   jobs:
-#     - name: packages audit
-#       tags:
-#         - frontend
-#         - security
-#       run: yarn audit
-#
-#     - name: gems audit
-#       tags:
-#         - backend
-#         - security
-#       run: bundle audit
-#
-# pre-commit:
-#   parallel: true
-#   jobs:
-#     - run: yarn eslint {staged_files}
-#       glob: "*.{js,ts,jsx,tsx}"
-#
-#     - name: rubocop
-#       glob: "*.rb"
-#       exclude:
-#         - config/application.rb
-#         - config/routes.rb
-#       run: bundle exec rubocop --force-exclusion -- {all_files}
-#
-#     - name: govet
-#       files: git ls-files -m
-#       glob: "*.go"
-#       run: go vet -- {files}
-#
-#     - script: "hello.js"
-#       runner: node
-#
-#     - script: "hello.go"
-#       runner: go run
+# Quality gate: every commit runs the full chain in order.
+# Any tool failing (including warning-level findings) blocks the commit.
+pre-commit:
+  jobs:
+    - name: tsgo
+      run: bunx --bun tsgo --noEmit
+
+    - name: oxlint
+      run: bunx --bun oxlint . --deny-warnings
+
+    - name: biome
+      run: bunx --bun biome check .
+
+    - name: eslint
+      run: bunx --bun eslint .
+
+    - name: jscpd
+      run: bunx --bun jscpd src
+
+    - name: knip
+      run: bunx --bun knip
+      env:
+        # oxc-parser raw-transfer buffer allocation fails on this host
+        # (Node 24 + large heaps); the AST walk path is equivalent.
+        KNIP_DISABLE_RAW_TRANSFER: "1"

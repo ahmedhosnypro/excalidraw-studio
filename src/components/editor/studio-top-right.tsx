@@ -1,9 +1,19 @@
 "use client";
 
 import { useMutation } from "@apollo/client/react";
+import {
+  Cloud,
+  CloudOff,
+  FolderOpen,
+  Loader2,
+  LogIn,
+  LogOut,
+  Moon,
+  RefreshCw,
+  Sun,
+} from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback } from "react";
-
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,23 +24,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  CloudOff,
-  Cloud,
-  FolderOpen,
-  Loader2,
-  LogIn,
-  LogOut,
-  Moon,
-  RefreshCw,
-  Sun,
-} from "lucide-react";
-
-import {
-  LOGOUT_MUTATION,
-  ME_QUERY,
-} from "@/lib/graphql/operations";
 import type { UserGql } from "@/lib/graphql/operations";
+import { LOGOUT_MUTATION, ME_QUERY } from "@/lib/graphql/operations";
 import { useEditorStore } from "@/store/editor-store";
 
 function SaveStatusChip() {
@@ -142,9 +137,7 @@ export function StudioTopRight({ user }: { user: UserGql | null }) {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label="Account menu">
               <Avatar className="h-6 w-6">
-                <AvatarFallback className="text-[10px] font-semibold">
-                  {initials}
-                </AvatarFallback>
+                <AvatarFallback className="text-[10px] font-semibold">{initials}</AvatarFallback>
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
@@ -169,9 +162,7 @@ export function StudioTopRight({ user }: { user: UserGql | null }) {
           size="sm"
           className="h-8"
           onClick={() =>
-            openAuthDialog(
-              "Sign in to save your drawings to the cloud and switch between files.",
-            )
+            openAuthDialog("Sign in to save your drawings to the cloud and switch between files.")
           }
         >
           <LogIn className="mr-1 h-4 w-4" aria-hidden />

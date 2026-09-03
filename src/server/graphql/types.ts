@@ -33,7 +33,7 @@ export function toUserOutput(row: UserRow): UserOutput {
 }
 
 /** Author reference embedded on comments. */
-export const CommentAuthorType: GraphQLObjectType = new GraphQLObjectType({
+const CommentAuthorType: GraphQLObjectType = new GraphQLObjectType({
   name: "CommentAuthor",
   description: "Author of a comment.",
   fields: {
@@ -42,7 +42,7 @@ export const CommentAuthorType: GraphQLObjectType = new GraphQLObjectType({
   },
 });
 
-export interface CommentAuthorOutput {
+interface CommentAuthorOutput {
   id: string;
   name: string;
 }

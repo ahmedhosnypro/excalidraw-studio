@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { GraphQLBoolean, GraphQLFieldConfig, GraphQLNonNull, GraphQLString } from "graphql";
+import { GraphQLBoolean, type GraphQLFieldConfig, GraphQLNonNull, GraphQLString } from "graphql";
 import { z } from "zod";
 
 import { db } from "@/db";
@@ -14,7 +14,7 @@ import {
 } from "@/server/auth/sessions";
 import type { ApolloContext } from "@/server/graphql/context";
 import { gqlError } from "@/server/graphql/errors";
-import { UserType, toUserOutput } from "@/server/graphql/types";
+import { toUserOutput, UserType } from "@/server/graphql/types";
 
 const emailSchema = z.email().transform((value) => value.trim().toLowerCase());
 const passwordSchema = z.string().min(8, "Password must be at least 8 characters").max(200);
@@ -59,7 +59,7 @@ export const signupMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
     }
 
     const passwordHash = await hashPassword(input.data.password);
-    let row;
+    let row: typeof users.$inferSelect | undefined;
     try {
       const inserted = await db
         .insert(users)
@@ -99,11 +99,7 @@ export const loginMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
       throw gqlError("BAD_USER_INPUT", "Email and password are required.");
     }
 
-    const rows = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, input.data.email))
-      .limit(1);
+    const rows = await db.select().from(users).where(eq(users.email, input.data.email)).limit(1);
     const row = rows[0];
     if (!row || !(await verifyPassword(input.data.password, row.passwordHash))) {
       throw gqlError("UNAUTHENTICATED", "Invalid email or password.");

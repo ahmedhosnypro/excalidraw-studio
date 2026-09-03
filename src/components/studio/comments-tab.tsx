@@ -1,22 +1,12 @@
 "use client";
 
 import { useMutation, useQuery } from "@apollo/client/react";
+import { Check, CheckCheck, MessageSquareOff, Pencil, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils";
-import { Check, CheckCheck, MessageSquareOff, Pencil, Trash2 } from "lucide-react";
-
-import {
-  ADD_COMMENT_MUTATION,
-  COMMENTS_QUERY,
-  DELETE_COMMENT_MUTATION,
-  RESOLVE_COMMENT_MUTATION,
-  UPDATE_COMMENT_MUTATION,
-} from "@/lib/graphql/operations";
 import type {
   CommentGql,
   CommentMutationData,
@@ -25,26 +15,38 @@ import type {
   CommentsQueryVariables,
 } from "@/lib/graphql/operations";
 
-function CommentItem({
-  comment,
-  fileId,
-}: {
-  comment: CommentGql;
-  fileId: string;
-}) {
+import {
+  ADD_COMMENT_MUTATION,
+  COMMENTS_QUERY,
+  DELETE_COMMENT_MUTATION,
+  RESOLVE_COMMENT_MUTATION,
+  UPDATE_COMMENT_MUTATION,
+} from "@/lib/graphql/operations";
+import { cn } from "@/lib/utils";
+
+function CommentItem({ comment, fileId }: { comment: CommentGql; fileId: string }) {
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(comment.body);
 
   const refetch = [{ query: COMMENTS_QUERY, variables: { fileId } }];
-  const [updateComment] = useMutation<CommentMutationData, CommentMutationVariables>(UPDATE_COMMENT_MUTATION, {
-    refetchQueries: refetch,
-  });
-  const [resolveComment] = useMutation<CommentMutationData, CommentMutationVariables>(RESOLVE_COMMENT_MUTATION, {
-    refetchQueries: refetch,
-  });
-  const [deleteComment] = useMutation<{ deleteComment: boolean }, CommentMutationVariables>(DELETE_COMMENT_MUTATION, {
-    refetchQueries: refetch,
-  });
+  const [updateComment] = useMutation<CommentMutationData, CommentMutationVariables>(
+    UPDATE_COMMENT_MUTATION,
+    {
+      refetchQueries: refetch,
+    },
+  );
+  const [resolveComment] = useMutation<CommentMutationData, CommentMutationVariables>(
+    RESOLVE_COMMENT_MUTATION,
+    {
+      refetchQueries: refetch,
+    },
+  );
+  const [deleteComment] = useMutation<{ deleteComment: boolean }, CommentMutationVariables>(
+    DELETE_COMMENT_MUTATION,
+    {
+      refetchQueries: refetch,
+    },
+  );
 
   const commitEdit = useCallback(async () => {
     setEditing(false);
@@ -74,9 +76,7 @@ function CommentItem({
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-xs font-semibold">
-          {comment.author?.name ?? "Unknown"}
-        </span>
+        <span className="truncate text-xs font-semibold">{comment.author?.name ?? "Unknown"}</span>
         <span className="shrink-0 text-[10px] text-muted-foreground">
           {new Date(comment.createdAt).toLocaleString()}
         </span>
@@ -167,7 +167,9 @@ export function CommentsTab({ fileId }: { fileId: string | null }) {
     variables: { fileId: fileId ?? "" },
     skip: !fileId,
   });
-  const [addComment] = useMutation<CommentMutationData, CommentMutationVariables>(ADD_COMMENT_MUTATION);
+  const [addComment] = useMutation<CommentMutationData, CommentMutationVariables>(
+    ADD_COMMENT_MUTATION,
+  );
 
   const comments = data?.comments ?? [];
 
@@ -188,9 +190,7 @@ export function CommentsTab({ fileId }: { fileId: string | null }) {
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
         <MessageSquareOff className="h-6 w-6 text-muted-foreground" aria-hidden />
         <p className="text-sm font-medium">No file open</p>
-        <p className="text-xs text-muted-foreground">
-          Open a file to see and add comments.
-        </p>
+        <p className="text-xs text-muted-foreground">Open a file to see and add comments.</p>
       </div>
     );
   }
@@ -218,9 +218,7 @@ export function CommentsTab({ fileId }: { fileId: string | null }) {
       <ScrollArea className="flex-1">
         <div className="flex flex-col gap-2 pr-2">
           {loading ? (
-            <p className="py-6 text-center text-xs text-muted-foreground">
-              Loading comments…
-            </p>
+            <p className="py-6 text-center text-xs text-muted-foreground">Loading comments…</p>
           ) : comments.length === 0 ? (
             <p className="py-6 text-center text-xs text-muted-foreground">
               No comments yet. Add the first one above.

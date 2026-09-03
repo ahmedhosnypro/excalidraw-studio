@@ -1,35 +1,15 @@
 "use client";
 
-import { useMutation } from "@apollo/client/react";
+import { loadFromBlob, MainMenu, WelcomeScreen } from "@excalidraw/excalidraw";
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import type { AppState, BinaryFileData } from "@excalidraw/excalidraw/types";
+import { FilePlus2, FolderOpen, HardDriveDownload, LogIn, LogOut, Save } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback } from "react";
-
-import {
-  MainMenu,
-  WelcomeScreen,
-  loadFromBlob,
-} from "@excalidraw/excalidraw";
-import type { AppState, BinaryFileData } from "@excalidraw/excalidraw/types";
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
-import {
-  FilePlus2,
-  FolderOpen,
-  HardDriveDownload,
-  LogIn,
-  LogOut,
-  Save,
-} from "lucide-react";
-
-import {
-  CREATE_FILE_MUTATION,
-  LOGOUT_MUTATION,
-  ME_QUERY,
-} from "@/lib/graphql/operations";
-import type { FileMutationData } from "@/lib/graphql/operations";
+import { useStudioMutations } from "@/hooks/use-studio-mutations";
 import { useEditorStore } from "@/store/editor-store";
 
-const ACCEPTED_TYPES =
-  ".excalidraw,application/json,application/vnd.excalidraw+json";
+const ACCEPTED_TYPES = ".excalidraw,application/json,application/vnd.excalidraw+json";
 
 /** Opens a local `.excalidraw` file directly onto the canvas. */
 function useOpenFromDisk() {
@@ -69,12 +49,7 @@ function useOpenFromDisk() {
 export function StudioMainMenu({ isAuthenticated }: { isAuthenticated: boolean }) {
   const { theme, setTheme } = useTheme();
   const openFromDisk = useOpenFromDisk();
-  const [createFile] = useMutation<FileMutationData, { name?: string }>(CREATE_FILE_MUTATION, {
-    refetchQueries: [{ query: ME_QUERY }, "Files"],
-  });
-  const [logout] = useMutation<{ logout: boolean }, Record<string, never>>(LOGOUT_MUTATION, {
-    refetchQueries: [{ query: ME_QUERY }, "Files"],
-  });
+  const { createFile, logout } = useStudioMutations();
 
   const openDialog = useEditorStore((state) => state.openDialog);
   const openAuthDialog = useEditorStore((state) => state.openAuthDialog);
@@ -105,9 +80,7 @@ export function StudioMainMenu({ isAuthenticated }: { isAuthenticated: boolean }
   }, [flushSave, logout]);
 
   const handleSignIn = useCallback(() => {
-    openAuthDialog(
-      "Sign in to save your drawings to the cloud and switch between files.",
-    );
+    openAuthDialog("Sign in to save your drawings to the cloud and switch between files.");
   }, [openAuthDialog]);
 
   return (
@@ -128,10 +101,7 @@ export function StudioMainMenu({ isAuthenticated }: { isAuthenticated: boolean }
             New file
           </MainMenu.Item>
         ) : null}
-        <MainMenu.Item
-          icon={<HardDriveDownload className="h-4 w-4" />}
-          onSelect={openFromDisk}
-        >
+        <MainMenu.Item icon={<HardDriveDownload className="h-4 w-4" />} onSelect={openFromDisk}>
           Open from disk…
         </MainMenu.Item>
         {isAuthenticated ? (
@@ -163,17 +133,11 @@ export function StudioMainMenu({ isAuthenticated }: { isAuthenticated: boolean }
 
       <MainMenu.Group title="Account">
         {isAuthenticated ? (
-          <MainMenu.Item
-            icon={<LogOut className="h-4 w-4" />}
-            onSelect={() => void handleLogout()}
-          >
+          <MainMenu.Item icon={<LogOut className="h-4 w-4" />} onSelect={() => void handleLogout()}>
             Sign out
           </MainMenu.Item>
         ) : (
-          <MainMenu.Item
-            icon={<LogIn className="h-4 w-4" />}
-            onSelect={handleSignIn}
-          >
+          <MainMenu.Item icon={<LogIn className="h-4 w-4" />} onSelect={handleSignIn}>
             Sign in
           </MainMenu.Item>
         )}
@@ -191,11 +155,7 @@ export function StudioMainMenu({ isAuthenticated }: { isAuthenticated: boolean }
   );
 }
 
-export function StudioWelcomeScreen({
-  isAuthenticated,
-}: {
-  isAuthenticated: boolean;
-}) {
+export function StudioWelcomeScreen({ isAuthenticated }: { isAuthenticated: boolean }) {
   const openDialog = useEditorStore((state) => state.openDialog);
   const openAuthDialog = useEditorStore((state) => state.openAuthDialog);
 

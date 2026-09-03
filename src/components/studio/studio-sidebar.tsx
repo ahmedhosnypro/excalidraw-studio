@@ -1,12 +1,10 @@
 "use client";
 
-import { MessageCircle, Presentation } from "lucide-react";
-
 import { DefaultSidebar, Sidebar } from "@excalidraw/excalidraw";
-
-import { useEditorStore } from "@/store/editor-store";
+import { MessageCircle, Presentation } from "lucide-react";
 import { CommentsTab } from "@/components/studio/comments-tab";
 import { PresentTab } from "@/components/studio/present-tab";
+import { useEditorStore } from "@/store/editor-store";
 
 /**
  * The right sidebar: search (built-in), libraries (built-in) plus our

@@ -1,32 +1,24 @@
 "use client";
 
+import { DefaultSidebar, Excalidraw } from "@excalidraw/excalidraw";
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { useTheme } from "next-themes";
 import { useCallback } from "react";
 
-import { DefaultSidebar, Excalidraw } from "@excalidraw/excalidraw";
-import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-
 import "@excalidraw/excalidraw/index.css";
 
-import type { FileGql, UserGql } from "@/lib/graphql/operations";
-import { useEditorStore } from "@/store/editor-store";
-
-import { useAutosave } from "./use-autosave";
-import { StudioMainMenu, StudioWelcomeScreen } from "./studio-main-menu";
 import { StudioSidebar } from "@/components/studio/studio-sidebar";
+import type { UserGql } from "@/lib/graphql/operations";
+import { useEditorStore } from "@/store/editor-store";
+import { StudioMainMenu, StudioWelcomeScreen } from "./studio-main-menu";
 import { StudioTopRight } from "./studio-top-right";
+import { useAutosave } from "./use-autosave";
 
 export interface ExcalidrawCanvasProps {
   user: UserGql | null;
-  files: FileGql[];
-  onOpenFile: (file: FileGql) => void;
 }
 
-export function ExcalidrawCanvas({
-  user,
-  files,
-  onOpenFile,
-}: ExcalidrawCanvasProps) {
+export function ExcalidrawCanvas({ user }: ExcalidrawCanvasProps) {
   const { resolvedTheme } = useTheme();
   const { onSceneChange } = useAutosave(Boolean(user));
   const setExcalidrawApi = useEditorStore((state) => state.setExcalidrawApi);

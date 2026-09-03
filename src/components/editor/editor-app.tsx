@@ -1,28 +1,24 @@
 "use client";
 
 import { useLazyQuery, useQuery } from "@apollo/client/react";
-import { useEffect, useRef } from "react";
-
-import type { AppState } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 
-import {
-  FILES_QUERY,
-  ME_QUERY,
-  SCENE_QUERY,
-} from "@/lib/graphql/operations";
-import type { FileGql } from "@/lib/graphql/operations";
-import type { FilesQueryData, MeQueryData, SceneQueryData, SceneQueryVariables } from "@/lib/graphql/operations";
-import {
-  loadGuestScene,
-  sceneFilesToArray,
-} from "@/lib/scene-persistence";
-import { useEditorStore } from "@/store/editor-store";
-
+import type { AppState } from "@excalidraw/excalidraw/types";
+import { useEffect, useRef } from "react";
 import { AuthDialog } from "@/components/auth/auth-dialog";
 import { CommandPalette } from "@/components/studio/command-palette";
 import { FilesDialog } from "@/components/studio/files-dialog";
 import { PresentationMode } from "@/components/studio/presentation-mode";
+import type {
+  FileGql,
+  FilesQueryData,
+  MeQueryData,
+  SceneQueryData,
+  SceneQueryVariables,
+} from "@/lib/graphql/operations";
+import { FILES_QUERY, ME_QUERY, SCENE_QUERY } from "@/lib/graphql/operations";
+import { loadGuestScene, sceneFilesToArray } from "@/lib/scene-persistence";
+import { useEditorStore } from "@/store/editor-store";
 import { ExcalidrawCanvas } from "./excalidraw-canvas";
 
 /** Applies a loaded scene to the canvas. */
@@ -54,17 +50,12 @@ export function EditorApp() {
   const files = filesData?.files ?? [];
   const excalidrawApi = useEditorStore((state) => state.excalidrawApi);
 
-  const [loadScene] = useLazyQuery<SceneQueryData, SceneQueryVariables>(
-    SCENE_QUERY,
-    {
-      fetchPolicy: "network-only",
-    },
-  );
+  const [loadScene] = useLazyQuery<SceneQueryData, SceneQueryVariables>(SCENE_QUERY, {
+    fetchPolicy: "network-only",
+  });
 
   const bootstrappedRef = useRef(false);
-  const openFileRef = useRef<(file: FileGql) => Promise<void>>(
-    async () => undefined,
-  );
+  const openFileRef = useRef<(file: FileGql) => Promise<void>>(async () => undefined);
 
   const openFile = async (file: FileGql): Promise<void> => {
     const store = useEditorStore.getState();
@@ -132,19 +123,11 @@ export function EditorApp() {
 
   return (
     <main className="h-dvh w-full">
-      <ExcalidrawCanvas
-        user={user}
-        files={files}
-        onOpenFile={(file) => void openFile(file)}
-      />
+      <ExcalidrawCanvas user={user} />
       <AuthDialog />
       <FilesDialog onOpenFile={(file) => void openFile(file)} />
       <PresentationMode />
-      <CommandPalette
-        user={user}
-        files={files}
-        onOpenFile={(file) => void openFile(file)}
-      />
+      <CommandPalette user={user} files={files} onOpenFile={(file) => void openFile(file)} />
     </main>
   );
 }

@@ -1,39 +1,32 @@
-import { relations as classicRelations } from "drizzle-orm/_relations";
 import { defineRelations } from "drizzle-orm";
+import { relations as classicRelations } from "drizzle-orm/_relations";
 import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 const uuid = () => crypto.randomUUID();
 const timestamp = (name: string) => integer(name, { mode: "timestamp_ms" });
+const now = () => new Date();
+const createdAtColumn = () => timestamp("created_at").notNull().$defaultFn(now);
+const updatedAtColumn = () => timestamp("updated_at").notNull().$defaultFn(now);
 
 export const users = sqliteTable("users", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(uuid),
+  id: text("id").primaryKey().$defaultFn(uuid),
   email: text("email").notNull().unique(),
   name: text("name").notNull(),
   passwordHash: text("password_hash").notNull(),
-  createdAt: timestamp("created_at")
-    .notNull()
-    .$defaultFn(() => new Date()),
-  updatedAt: timestamp("updated_at")
-    .notNull()
-    .$defaultFn(() => new Date()),
+  createdAt: createdAtColumn(),
+  updatedAt: updatedAtColumn(),
 });
 
 export const sessions = sqliteTable(
   "sessions",
   {
-    id: text("id")
-      .primaryKey()
-      .$defaultFn(uuid),
+    id: text("id").primaryKey().$defaultFn(uuid),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     tokenHash: text("token_hash").notNull().unique(),
     expiresAt: timestamp("expires_at").notNull(),
-    createdAt: timestamp("created_at")
-      .notNull()
-      .$defaultFn(() => new Date()),
+    createdAt: createdAtColumn(),
   },
   (table) => [index("sessions_user_id_idx").on(table.userId)],
 );
@@ -41,20 +34,14 @@ export const sessions = sqliteTable(
 export const files = sqliteTable(
   "files",
   {
-    id: text("id")
-      .primaryKey()
-      .$defaultFn(uuid),
+    id: text("id").primaryKey().$defaultFn(uuid),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     storageKey: text("storage_key").notNull(),
-    createdAt: timestamp("created_at")
-      .notNull()
-      .$defaultFn(() => new Date()),
-    updatedAt: timestamp("updated_at")
-      .notNull()
-      .$defaultFn(() => new Date()),
+    createdAt: createdAtColumn(),
+    updatedAt: updatedAtColumn(),
   },
   (table) => [index("files_user_id_idx").on(table.userId)],
 );
@@ -62,9 +49,7 @@ export const files = sqliteTable(
 export const comments = sqliteTable(
   "comments",
   {
-    id: text("id")
-      .primaryKey()
-      .$defaultFn(uuid),
+    id: text("id").primaryKey().$defaultFn(uuid),
     fileId: text("file_id")
       .notNull()
       .references(() => files.id, { onDelete: "cascade" }),
@@ -74,15 +59,9 @@ export const comments = sqliteTable(
     body: text("body").notNull(),
     x: real("x"),
     y: real("y"),
-    resolved: integer("resolved", { mode: "boolean" })
-      .notNull()
-      .default(false),
-    createdAt: timestamp("created_at")
-      .notNull()
-      .$defaultFn(() => new Date()),
-    updatedAt: timestamp("updated_at")
-      .notNull()
-      .$defaultFn(() => new Date()),
+    resolved: integer("resolved", { mode: "boolean" }).notNull().default(false),
+    createdAt: createdAtColumn(),
+    updatedAt: updatedAtColumn(),
   },
   (table) => [
     index("comments_file_id_idx").on(table.fileId),
@@ -126,22 +105,19 @@ export const classicFullSchema = {
 // Relations (drizzle-orm 1.0 RQBv2 shape) — powers db.query.*.findMany with
 // nested `with` selects on the drizzle instance itself.
 // ---------------------------------------------------------------------------
-export const rqbRelations = defineRelations(
-  { users, files, comments },
-  (rl) => ({
-    users: {
-      files: rl.many.files({ from: rl.users.id, to: rl.files.userId }),
-    },
-    files: {
-      user: rl.one.users({ from: rl.files.userId, to: rl.users.id }),
-      comments: rl.many.comments({ from: rl.files.id, to: rl.comments.fileId }),
-    },
-    comments: {
-      user: rl.one.users({ from: rl.comments.userId, to: rl.users.id }),
-      file: rl.one.files({ from: rl.comments.fileId, to: rl.files.id }),
-    },
-  }),
-);
+export const rqbRelations = defineRelations({ users, files, comments }, (rl) => ({
+  users: {
+    files: rl.many.files({ from: rl.users.id, to: rl.files.userId }),
+  },
+  files: {
+    user: rl.one.users({ from: rl.files.userId, to: rl.users.id }),
+    comments: rl.many.comments({ from: rl.files.id, to: rl.comments.fileId }),
+  },
+  comments: {
+    user: rl.one.users({ from: rl.comments.userId, to: rl.users.id }),
+    file: rl.one.files({ from: rl.comments.fileId, to: rl.files.id }),
+  },
+}));
 
 export type UserRow = typeof users.$inferSelect;
 export type FileRow = typeof files.$inferSelect;

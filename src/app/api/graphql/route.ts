@@ -2,7 +2,7 @@ import { ApolloServer } from "@apollo/server";
 import { startServerAndCreateNextHandler } from "@as-integrations/next";
 import type { NextRequest } from "next/server";
 
-import { createApolloContext, type ApolloContext } from "@/server/graphql/context";
+import { type ApolloContext, createApolloContext } from "@/server/graphql/context";
 import { schema } from "@/server/graphql/schema";
 
 export const runtime = "nodejs";
@@ -25,16 +25,13 @@ const server = new ApolloServer<ApolloContext>({
  */
 const contexts = new WeakMap<NextRequest, ApolloContext>();
 
-const apolloHandler = startServerAndCreateNextHandler<NextRequest, ApolloContext>(
-  server,
-  {
-    context: async (request) => {
-      const context = await createApolloContext(request);
-      contexts.set(request, context);
-      return context;
-    },
+const apolloHandler = startServerAndCreateNextHandler<NextRequest, ApolloContext>(server, {
+  context: async (request) => {
+    const context = await createApolloContext(request);
+    contexts.set(request, context);
+    return context;
   },
-);
+});
 
 function applyCookies(request: NextRequest, response: Response): Response {
   const context = contexts.get(request);

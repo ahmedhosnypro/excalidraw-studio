@@ -1,0 +1,16 @@
+{
+  "$schema": "https://unpkg.com/knip@6.33.0/schema.json",
+  "workspaces": {
+    ".": {
+      "project": [
+        "src/**/*.{ts,tsx,css}"
+      ],
+      "vercel-og": false,
+      "next-intl": false,
+      "bun": false
+    }
+  },
+  "ignoreDependencies": [
+    "eslint-plugin-drizzle"
+  ]
+}

@@ -1,8 +1,8 @@
 "use client";
 
 import { useMutation, useQuery } from "@apollo/client/react";
+import { Copy, FilePlus2, MoreHorizontal, Pencil, Search, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,8 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,15 +18,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Copy,
-  FilePlus2,
-  MoreHorizontal,
-  Pencil,
-  Search,
-  Trash2,
-} from "lucide-react";
-
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { useToast } from "@/hooks/use-toast";
+import type {
+  FileGql,
+  FileMutationData,
+  FileMutationVariables,
+  FilesQueryData,
+  MeQueryData,
+} from "@/lib/graphql/operations";
 import {
   CREATE_FILE_MUTATION,
   DELETE_FILE_MUTATION,
@@ -37,11 +36,7 @@ import {
   ME_QUERY,
   RENAME_FILE_MUTATION,
 } from "@/lib/graphql/operations";
-import type { FileMutationData, FileMutationVariables } from "@/lib/graphql/operations";
-import type { FileGql } from "@/lib/graphql/operations";
-import type { FilesQueryData, MeQueryData } from "@/lib/graphql/operations";
 import { useEditorStore } from "@/store/editor-store";
-import { useToast } from "@/hooks/use-toast";
 
 function formatRelativeDate(iso: string | undefined): string {
   if (!iso) {
@@ -85,12 +80,18 @@ function FileRow({
   const [renameFile] = useMutation<FileMutationData, FileMutationVariables>(RENAME_FILE_MUTATION, {
     refetchQueries: [{ query: ME_QUERY }, "Files"],
   });
-  const [duplicateFile] = useMutation<FileMutationData, FileMutationVariables>(DUPLICATE_FILE_MUTATION, {
-    refetchQueries: [{ query: ME_QUERY }, "Files"],
-  });
-  const [deleteFile] = useMutation<{ deleteFile: boolean }, FileMutationVariables>(DELETE_FILE_MUTATION, {
-    refetchQueries: [{ query: ME_QUERY }, "Files"],
-  });
+  const [duplicateFile] = useMutation<FileMutationData, FileMutationVariables>(
+    DUPLICATE_FILE_MUTATION,
+    {
+      refetchQueries: [{ query: ME_QUERY }, "Files"],
+    },
+  );
+  const [deleteFile] = useMutation<{ deleteFile: boolean }, FileMutationVariables>(
+    DELETE_FILE_MUTATION,
+    {
+      refetchQueries: [{ query: ME_QUERY }, "Files"],
+    },
+  );
   const { toast } = useToast();
 
   const commitRename = useCallback(async () => {
@@ -148,9 +149,7 @@ function FileRow({
   return (
     <div
       className={`group flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors ${
-        active
-          ? "border-primary/50 bg-primary/5"
-          : "border-transparent hover:bg-muted/60"
+        active ? "border-primary/50 bg-primary/5" : "border-transparent hover:bg-muted/60"
       }`}
     >
       {renaming ? (
@@ -219,8 +218,7 @@ function FileRow({
           <DialogHeader>
             <DialogTitle>Delete “{file.name}”?</DialogTitle>
             <DialogDescription>
-              This permanently deletes the drawing and its comments. This action
-              cannot be undone.
+              This permanently deletes the drawing and its comments. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2">
@@ -325,9 +323,7 @@ export function FilesDialog({ onOpenFile }: { onOpenFile: (file: FileGql) => voi
             <ScrollArea className="max-h-80 -mx-1 px-1">
               <div className="flex flex-col gap-1">
                 {loading ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground">
-                    Loading files…
-                  </p>
+                  <p className="py-8 text-center text-sm text-muted-foreground">Loading files…</p>
                 ) : files.length === 0 ? (
                   <div className="py-8 text-center">
                     <p className="text-sm font-medium">No files found</p>
@@ -359,8 +355,7 @@ export function FilesDialog({ onOpenFile }: { onOpenFile: (file: FileGql) => voi
         ) : (
           <div className="flex flex-col items-center gap-4 py-6">
             <p className="text-center text-sm text-muted-foreground">
-              Files are saved to your account so you can access them from any
-              device.
+              Files are saved to your account so you can access them from any device.
             </p>
             <Button
               onClick={() =>

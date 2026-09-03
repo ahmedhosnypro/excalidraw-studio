@@ -1,10 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import type { UserRow } from "@/db/schema";
-import {
-  readSessionCookie,
-  resolveSessionUser,
-} from "@/server/auth/sessions";
+import { readSessionCookie, resolveSessionUser } from "@/server/auth/sessions";
 
 export interface ApolloContext {
   /** Signed-in user row (or null for guests). */
@@ -22,9 +19,7 @@ export interface ApolloContext {
   setCookie(cookie: string): void;
 }
 
-export async function createApolloContext(
-  request: NextRequest,
-): Promise<ApolloContext> {
+export async function createApolloContext(request: NextRequest): Promise<ApolloContext> {
   const token = readSessionCookie(request.headers.get("cookie") ?? undefined);
   const user = await resolveSessionUser(token ?? undefined);
 

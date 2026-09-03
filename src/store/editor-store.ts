@@ -1,11 +1,11 @@
 "use client";
 
-import { create } from "zustand";
-
-import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 
-export type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import { create } from "zustand";
+
+type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
 
 /** One presentation slide — typically the contents of a frame. */
 export interface PresentationSlide {
@@ -14,9 +14,9 @@ export interface PresentationSlide {
   elements: ExcalidrawElement[];
 }
 
-export type DialogName = "files" | "auth" | "shortcuts" | null;
+type DialogName = "files" | "auth" | "shortcuts" | null;
 
-export type SidebarTab = "libraries" | "comments" | "present";
+type SidebarTab = "libraries" | "comments" | "present";
 
 interface EditorState {
   /** Imperative Excalidraw API, set once the canvas mounts. */
@@ -71,10 +71,8 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   activeFileId: null,
   activeFileName: null,
-  openFile: (id, name) =>
-    set({ activeFileId: id, activeFileName: name, saveStatus: "idle" }),
-  closeFile: () =>
-    set({ activeFileId: null, activeFileName: null, saveStatus: "idle" }),
+  openFile: (id, name) => set({ activeFileId: id, activeFileName: name, saveStatus: "idle" }),
+  closeFile: () => set({ activeFileId: null, activeFileName: null, saveStatus: "idle" }),
   renameActiveFile: (name) => set({ activeFileName: name }),
 
   saveStatus: "idle",

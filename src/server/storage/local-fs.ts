@@ -1,11 +1,7 @@
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
-import {
-  StorageError,
-  assertValidKey,
-  type StorageAdapter,
-} from "./types";
+import { assertValidKey, type StorageAdapter, StorageError } from "./types";
 
 /**
  * Filesystem-backed storage driver. Objects live under a single root directory
@@ -32,14 +28,10 @@ export class LocalFileSystemStorage implements StorageAdapter {
     const path = this.path(key);
     try {
       await mkdir(dirname(path), { recursive: true });
-      const payload =
-        typeof data === "string" ? new TextEncoder().encode(data) : data;
+      const payload = typeof data === "string" ? new TextEncoder().encode(data) : data;
       await writeFile(path, payload);
     } catch (error) {
-      throw new StorageError(
-        `Failed to write object "${key}": ${String(error)}`,
-        "WRITE_FAILED",
-      );
+      throw new StorageError(`Failed to write object "${key}": ${String(error)}`, "WRITE_FAILED");
     }
   }
 
@@ -52,10 +44,7 @@ export class LocalFileSystemStorage implements StorageAdapter {
       if (code === "ENOENT") {
         return null;
       }
-      throw new StorageError(
-        `Failed to read object "${key}": ${String(error)}`,
-        "READ_FAILED",
-      );
+      throw new StorageError(`Failed to read object "${key}": ${String(error)}`, "READ_FAILED");
     }
   }
 
@@ -64,10 +53,7 @@ export class LocalFileSystemStorage implements StorageAdapter {
     try {
       await rm(path, { force: true });
     } catch (error) {
-      throw new StorageError(
-        `Failed to delete object "${key}": ${String(error)}`,
-        "DELETE_FAILED",
-      );
+      throw new StorageError(`Failed to delete object "${key}": ${String(error)}`, "DELETE_FAILED");
     }
   }
 
@@ -81,10 +67,7 @@ export class LocalFileSystemStorage implements StorageAdapter {
       if (code === "ENOENT") {
         return false;
       }
-      throw new StorageError(
-        `Failed to stat object "${key}": ${String(error)}`,
-        "READ_FAILED",
-      );
+      throw new StorageError(`Failed to stat object "${key}": ${String(error)}`, "READ_FAILED");
     }
   }
 }

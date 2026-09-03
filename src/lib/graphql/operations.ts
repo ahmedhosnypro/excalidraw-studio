@@ -19,13 +19,13 @@ export interface FileGql {
   updatedAt?: string;
 }
 
-export interface SceneDataGql {
+interface SceneDataGql {
   elements: unknown[];
   appState: Record<string, unknown>;
   files: Record<string, unknown>;
 }
 
-export interface CommentAuthorGql {
+interface CommentAuthorGql {
   id: string;
   name: string;
 }

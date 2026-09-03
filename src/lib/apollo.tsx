@@ -2,11 +2,10 @@
 
 import { ApolloClient, HttpLink, InMemoryCache } from "@apollo/client";
 import { ApolloProvider } from "@apollo/client/react";
+import type { ReactNode } from "react";
 import { useState } from "react";
 
-import type { ReactNode } from "react";
-
-export function makeApolloClient(): ApolloClient {
+function makeApolloClient(): ApolloClient {
   return new ApolloClient({
     link: new HttpLink({
       uri: "/api/graphql",

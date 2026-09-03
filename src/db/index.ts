@@ -1,6 +1,6 @@
-import { createClient } from "@libsql/client";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 
 import { classicFullSchema, rqbRelations } from "./schema";
@@ -20,9 +20,7 @@ function resolveDatabaseFile(url: string): string {
   return `file:${absolute}`;
 }
 
-const databaseUrl = resolveDatabaseFile(
-  process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
-);
+const databaseUrl = resolveDatabaseFile(process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL);
 
 export const db = drizzle({
   client: createClient({ url: databaseUrl }),
@@ -34,5 +32,4 @@ export const db = drizzle({
 type DrizzleInternals = { fullSchema?: Record<string, unknown> };
 (db._ as DrizzleInternals).fullSchema = classicFullSchema;
 
-export { classicFullSchema, rqbRelations };
 export * from "./schema";

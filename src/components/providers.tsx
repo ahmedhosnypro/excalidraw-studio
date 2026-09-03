@@ -8,12 +8,7 @@ import { ApolloGraphQLProvider } from "@/lib/apollo";
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="system"
-      enableSystem
-      disableTransitionOnChange
-    >
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <ApolloGraphQLProvider>{children}</ApolloGraphQLProvider>
     </ThemeProvider>
   );
