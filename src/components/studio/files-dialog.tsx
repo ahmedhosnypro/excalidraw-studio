@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@apollo/client/react";
-import { Copy, FilePlus2, MoreHorizontal, Pencil, Search, Trash2 } from "lucide-react";
+import { Copy, FilePlus2, FolderOpen, MoreHorizontal, Pencil, Search, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -325,11 +325,20 @@ export function FilesDialog({ onOpenFile }: { onOpenFile: (file: FileGql) => voi
                 {loading ? (
                   <p className="py-8 text-center text-sm text-muted-foreground">Loading files…</p>
                 ) : files.length === 0 ? (
-                  <div className="py-8 text-center">
-                    <p className="text-sm font-medium">No files found</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Create a new file to start drawing.
-                    </p>
+                  <div className="flex flex-col items-center gap-3 py-12 text-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                      <FolderOpen className="h-6 w-6 text-muted-foreground" aria-hidden />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">No drawings yet</p>
+                      <p className="text-xs text-muted-foreground">
+                        Create your first file — everything you draw autosaves to your account.
+                      </p>
+                    </div>
+                    <Button size="sm" onClick={() => void handleCreate()} className="gap-1.5">
+                      <FilePlus2 className="h-4 w-4" aria-hidden />
+                      New drawing
+                    </Button>
                   </div>
                 ) : (
                   files.map((file) => (

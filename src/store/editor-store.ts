@@ -23,6 +23,14 @@ interface EditorState {
   excalidrawApi: ExcalidrawImperativeAPI | null;
   setExcalidrawApi: (api: ExcalidrawImperativeAPI | null) => void;
 
+  /** Canvas viewport (updated on every pan/zoom) — powers canvas overlays. */
+  viewport: { scrollX: number; scrollY: number; zoom: number };
+  setViewport: (viewport: { scrollX: number; scrollY: number; zoom: number }) => void;
+
+  /** Comment highlighted from a canvas pin click (scrolls it into view). */
+  highlightedCommentId: string | null;
+  highlightComment: (id: string | null) => void;
+
   /** Currently open cloud file (null = guest/local scene). */
   activeFileId: string | null;
   activeFileName: string | null;
@@ -68,6 +76,12 @@ interface EditorState {
 export const useEditorStore = create<EditorState>((set) => ({
   excalidrawApi: null,
   setExcalidrawApi: (api) => set({ excalidrawApi: api }),
+
+  viewport: { scrollX: 0, scrollY: 0, zoom: 1 },
+  setViewport: (viewport) => set({ viewport }),
+
+  highlightedCommentId: null,
+  highlightComment: (id) => set({ highlightedCommentId: id }),
 
   activeFileId: null,
   activeFileName: null,

@@ -2,6 +2,7 @@
 
 import { useMutation } from "@apollo/client/react";
 import {
+  Check,
   Cloud,
   CloudOff,
   FolderOpen,
@@ -26,53 +27,72 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { UserGql } from "@/lib/graphql/operations";
 import { LOGOUT_MUTATION, ME_QUERY } from "@/lib/graphql/operations";
+import { cn } from "@/lib/utils";
 import { useEditorStore } from "@/store/editor-store";
 
 function SaveStatusChip() {
   const saveStatus = useEditorStore((state) => state.saveStatus);
   const activeFileId = useEditorStore((state) => state.activeFileId);
 
-  if (!activeFileId && saveStatus === "idle") {
-    return (
-      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-        <CloudOff className="h-3.5 w-3.5" aria-hidden />
-        Local only
-      </span>
-    );
+  const config = (() => {
+    if (!activeFileId && saveStatus === "idle") {
+      return {
+        icon: <CloudOff className="h-3.5 w-3.5" aria-hidden />,
+        label: "Local only",
+        className: "bg-muted/60 text-muted-foreground border-border/60",
+      };
+    }
+    switch (saveStatus) {
+      case "saving":
+        return {
+          icon: <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />,
+          label: "Saving…",
+          className:
+            "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800",
+        };
+      case "dirty":
+        return {
+          icon: <Cloud className="h-3.5 w-3.5" aria-hidden />,
+          label: "Unsaved changes",
+          className:
+            "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800",
+        };
+      case "error":
+        return {
+          icon: <RefreshCw className="h-3.5 w-3.5" aria-hidden />,
+          label: "Save failed — retrying",
+          className: "bg-destructive/10 text-destructive border-destructive/30",
+        };
+      case "saved":
+        return {
+          icon: <Check className="h-3.5 w-3.5" aria-hidden />,
+          label: "Saved",
+          className:
+            "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800",
+        };
+      default:
+        return null;
+    }
+  })();
+
+  if (!config) {
+    return null;
   }
 
-  switch (saveStatus) {
-    case "saving":
-      return (
-        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-          Saving…
-        </span>
-      );
-    case "dirty":
-      return (
-        <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-          <Cloud className="h-3.5 w-3.5" aria-hidden />
-          Unsaved changes
-        </span>
-      );
-    case "error":
-      return (
-        <span className="flex items-center gap-1 text-xs text-destructive">
-          <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-          Save failed — retrying
-        </span>
-      );
-    case "saved":
-      return (
-        <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
-          <Cloud className="h-3.5 w-3.5" aria-hidden />
-          Saved
-        </span>
-      );
-    default:
-      return null;
-  }
+  return (
+    <span
+      role="status"
+      aria-live="polite"
+      className={cn(
+        "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium leading-none transition-colors duration-300",
+        config.className,
+      )}
+    >
+      {config.icon}
+      <span className="hidden sm:inline">{config.label}</span>
+      <span className="sr-only sm:hidden">{config.label}</span>
+    </span>
+  );
 }
 
 export function StudioTopRight({ user }: { user: UserGql | null }) {

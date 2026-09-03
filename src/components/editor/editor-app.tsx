@@ -115,6 +115,16 @@ export function EditorApp() {
       if (mod && event.key.toLowerCase() === "o") {
         event.preventDefault();
         useEditorStore.getState().openDialog("files");
+        return;
+      }
+
+      // Open Excalidraw's built-in image export dialog (advertised as
+      // "Export image…" in the command palette).
+      if (mod && event.shiftKey && event.key.toLowerCase() === "e") {
+        event.preventDefault();
+        useEditorStore
+          .getState()
+          .excalidrawApi?.updateScene({ appState: { openDialog: { name: "imageExport" } } });
       }
     };
     window.addEventListener("keydown", handler);

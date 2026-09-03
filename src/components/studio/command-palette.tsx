@@ -487,10 +487,12 @@ export function CommandPalette({
   );
 
   return (
-    <CommandDialog open={open} onOpenChange={setOpen}>
-      <CommandInput placeholder="Search menus, commands, and discover hidden gems…" />
+    <CommandDialog open={open} onOpenChange={setOpen} className="sm:max-w-xl">
+      <CommandInput placeholder="Search commands, tools, files…" />
       <CommandList>
-        <CommandEmpty>No results found.</CommandEmpty>
+        <CommandEmpty className="py-8 text-center text-sm text-muted-foreground">
+          No results found — try “export”, “zoom” or a tool name.
+        </CommandEmpty>
 
         <CommandGroup heading="App">
           {appCommands.map((command) => (
@@ -549,12 +551,15 @@ function PaletteRow({
       onSelect={() => onRun(command.perform)}
       className="gap-2"
     >
-      <span className="flex h-4 w-4 items-center justify-center [&_svg]:h-4 [&_svg]:w-4">
+      <span
+        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] bg-muted/60 text-muted-foreground [&_svg]:h-3.5 [&_svg]:w-3.5"
+        aria-hidden
+      >
         {command.icon}
       </span>
-      <span className="flex-1">{command.label}</span>
+      <span className="flex-1 truncate">{command.label}</span>
       {command.shortcut ? (
-        <kbd className="pointer-events-none hidden h-5 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground sm:inline-block">
+        <kbd className="pointer-events-none hidden h-5 select-none items-center rounded border border-border/60 bg-muted/40 px-1.5 font-mono text-[10px] font-medium tracking-tight text-muted-foreground shadow-[inset_0_-1px_0_0_var(--border)] sm:inline-flex">
           {command.shortcut}
         </kbd>
       ) : null}
