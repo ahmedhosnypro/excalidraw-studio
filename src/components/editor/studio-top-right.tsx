@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "@apollo/client/react";
+import { useMutation, useQuery } from "@apollo/client/react";
 import {
   Check,
   Cloud,
@@ -9,7 +9,9 @@ import {
   Loader2,
   LogIn,
   LogOut,
+  MessageCircle,
   Moon,
+  Presentation,
   RefreshCw,
   Sun,
 } from "lucide-react";
@@ -25,8 +27,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { UserGql } from "@/lib/graphql/operations";
-import { LOGOUT_MUTATION, ME_QUERY } from "@/lib/graphql/operations";
+import type { CommentsQueryData, CommentsQueryVariables, UserGql } from "@/lib/graphql/operations";
+import { COMMENTS_QUERY, LOGOUT_MUTATION, ME_QUERY } from "@/lib/graphql/operations";
 import { cn } from "@/lib/utils";
 import { useEditorStore } from "@/store/editor-store";
 
@@ -98,14 +100,72 @@ function SaveStatusChip() {
   );
 }
 
+/** Sidebar tab trigger (Comments / Present) with an active state + optional badge. */
+function SidebarTabButton({
+  tab,
+  label,
+  badge,
+  children,
+}: {
+  tab: "comments" | "present";
+  label: string;
+  badge?: number;
+  children: React.ReactNode;
+}) {
+  const sidebarTab = useEditorStore((state) => state.sidebarTab);
+  const presenting = useEditorStore((state) => state.presenting);
+  const isActive = presenting ? false : sidebarTab === tab;
+
+  const handleClick = useCallback(() => {
+    useEditorStore.getState().excalidrawApi?.toggleSidebar({ name: "default", tab });
+  }, [tab]);
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className={cn(
+        "h-8 gap-1.5 px-2",
+        isActive &&
+          "bg-violet-100 text-violet-700 hover:bg-violet-200 hover:text-violet-800 dark:bg-violet-950 dark:text-violet-300 dark:hover:bg-violet-900",
+      )}
+      onClick={handleClick}
+      aria-pressed={isActive}
+      aria-label={badge !== undefined && badge > 0 ? `${label} (${badge} open)` : label}
+      title={label}
+    >
+      {children}
+      {badge !== undefined && badge > 0 ? (
+        <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-violet-600 px-1 text-[10px] font-semibold leading-none text-white">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      ) : null}
+    </Button>
+  );
+}
+
 export function StudioTopRight({ user }: { user: UserGql | null }) {
   const { resolvedTheme, setTheme } = useTheme();
   const [logout] = useMutation<{ logout: boolean }, Record<string, never>>(LOGOUT_MUTATION, {
     refetchQueries: [{ query: ME_QUERY }, "Files"],
   });
+  const activeFileId = useEditorStore((state) => state.activeFileId);
   const activeFileName = useEditorStore((state) => state.activeFileName);
   const openDialog = useEditorStore((state) => state.openDialog);
   const openAuthDialog = useEditorStore((state) => state.openAuthDialog);
+
+  // Shares the Apollo cache with the comments sidebar tab — powers the open
+  // comment count badge on the top-right trigger.
+  const { data: commentsData } = useQuery<CommentsQueryData, CommentsQueryVariables>(
+    COMMENTS_QUERY,
+    {
+      variables: { fileId: activeFileId ?? "" },
+      skip: !activeFileId || !user,
+    },
+  );
+  const openCommentCount = (commentsData?.comments ?? []).filter(
+    (comment) => comment.parentId === null && !comment.resolved,
+  ).length;
 
   const handleLogout = useCallback(async () => {
     const { flushSave, closeFile } = useEditorStore.getState();
@@ -131,6 +191,14 @@ export function StudioTopRight({ user }: { user: UserGql | null }) {
           {activeFileName}
         </span>
       ) : null}
+      <SidebarTabButton tab="comments" label="Comments" badge={openCommentCount}>
+        <MessageCircle className="h-4 w-4" aria-hidden />
+        <span className="hidden lg:inline">Comments</span>
+      </SidebarTabButton>
+      <SidebarTabButton tab="present" label="Present slides">
+        <Presentation className="h-4 w-4" aria-hidden />
+        <span className="hidden lg:inline">Present</span>
+      </SidebarTabButton>
       <SaveStatusChip />
       <Button
         variant="ghost"

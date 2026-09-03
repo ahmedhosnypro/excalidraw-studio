@@ -52,6 +52,7 @@ import {
 } from "@/components/ui/command";
 import { useStudioMutations } from "@/hooks/use-studio-mutations";
 import type { FileGql, UserGql } from "@/lib/graphql/operations";
+import { buildSlides } from "@/lib/slides";
 import { useEditorStore } from "@/store/editor-store";
 
 /** Dispatches a keyboard shortcut onto the canvas so the package handles it. */
@@ -480,6 +481,23 @@ export function CommandPalette({
           useEditorStore
             .getState()
             .excalidrawApi?.toggleSidebar({ name: "default", tab: "present" });
+        },
+      },
+      {
+        id: "start-presentation",
+        label: "Start presentation now",
+        icon: <Play />,
+        keywords: "start play present fullscreen slides frames",
+        perform: () => {
+          const { excalidrawApi, startPresentation } = useEditorStore.getState();
+          const elements = excalidrawApi?.getSceneElements();
+          if (!elements) {
+            return;
+          }
+          const slides = buildSlides(elements);
+          if (slides.length > 0) {
+            startPresentation(slides);
+          }
         },
       },
     ],

@@ -9,13 +9,23 @@ import { useTheme } from "next-themes";
 import { useEffect, useRef } from "react";
 import type { SceneQueryData, SceneQueryVariables } from "@/lib/graphql/operations";
 import { SCENE_QUERY } from "@/lib/graphql/operations";
+import { mountSvgPreview } from "@/lib/svg-preview";
 
 /**
  * Small live SVG preview of a drawing, rendered from its stored scene via
  * Excalidraw's own `exportToSvg`. Falls back to a dashed placeholder for
- * empty scenes or while loading.
+ * empty scenes or while loading. `variant="grid"` renders a wide preview for
+ * grid cards; the default `row` variant is a compact square chip.
  */
-export function FileThumbnail({ fileId, name }: { fileId: string; name: string }) {
+export function FileThumbnail({
+  fileId,
+  name,
+  variant = "row",
+}: {
+  fileId: string;
+  name: string;
+  variant?: "row" | "grid";
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const { resolvedTheme } = useTheme();
   // network-only: the preview must reflect the latest autosaved scene (the
@@ -49,12 +59,7 @@ export function FileThumbnail({ fileId, name }: { fileId: string; name: string }
         if (cancelled) {
           return;
         }
-        // Fit the generated bounding-box-sized SVG into the thumbnail box.
-        svg.setAttribute("width", "100%");
-        svg.setAttribute("height", "100%");
-        svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
-        svg.setAttribute("style", "display:block");
-        host.replaceChildren(svg);
+        mountSvgPreview(svg, host);
       })
       .catch(() => {
         // Keep the placeholder on render failures (e.g. corrupt scene).
@@ -68,7 +73,11 @@ export function FileThumbnail({ fileId, name }: { fileId: string; name: string }
 
   return (
     <div
-      className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border/60 bg-muted/30 sm:h-12 sm:w-12"
+      className={
+        variant === "grid"
+          ? "relative flex aspect-[16/10] w-full shrink-0 items-center justify-center overflow-hidden rounded-md border border-border/60 bg-muted/30"
+          : "relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border/60 bg-muted/30 sm:h-12 sm:w-12"
+      }
       aria-hidden
     >
       {loading ? (

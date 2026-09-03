@@ -10,6 +10,7 @@ import {
   MessagesSquare,
   Pencil,
   Reply,
+  Search,
   Send,
   Trash2,
   X,
@@ -338,9 +339,13 @@ function CommentThread({
 // The sidebar tab itself.
 // ---------------------------------------------------------------------------
 
+type CommentFilter = "all" | "open" | "resolved";
+
 export function CommentsTab({ fileId }: { fileId: string | null }) {
   const [draft, setDraft] = useState("");
   const [pinToCanvas, setPinToCanvas] = useState(true);
+  const [filter, setFilter] = useState<CommentFilter>("all");
+  const [search, setSearch] = useState("");
   const viewport = useEditorStore((state) => state.viewport);
   const excalidrawApi = useEditorStore((state) => state.excalidrawApi);
   const pendingPin = useEditorStore((state) => state.pendingPin);
@@ -383,8 +388,21 @@ export function CommentsTab({ fileId }: { fileId: string | null }) {
         }
       }
     }
-    return roots.map((root) => ({ root, replies: repliesByParent.get(root.id) ?? [] }));
-  }, [comments]);
+    const needle = search.trim().toLowerCase();
+    const matches = (comment: CommentGql): boolean =>
+      !needle ||
+      comment.body.toLowerCase().includes(needle) ||
+      (comment.author?.name ?? "").toLowerCase().includes(needle);
+    const filteredRoots = roots.filter((root) => {
+      const byFilter = filter === "all" || (filter === "open" ? !root.resolved : root.resolved);
+      if (!byFilter) {
+        return false;
+      }
+      // A thread matches the search if its root or any reply matches.
+      return matches(root) || (repliesByParent.get(root.id) ?? []).some((reply) => matches(reply));
+    });
+    return filteredRoots.map((root) => ({ root, replies: repliesByParent.get(root.id) ?? [] }));
+  }, [comments, filter, search]);
 
   const stats = useMemo(() => {
     const roots = comments.filter((comment) => comment.parentId === null);
@@ -555,6 +573,76 @@ export function CommentsTab({ fileId }: { fileId: string | null }) {
         ) : null}
       </div>
 
+      <fieldset
+        className="flex items-center gap-1.5 rounded-lg border border-border/70 bg-muted/30 p-0.5"
+        aria-label="Filter comments"
+      >
+        {(
+          [
+            { key: "all", label: "All", count: stats.open + stats.resolved },
+            { key: "open", label: "Open", count: stats.open },
+            { key: "resolved", label: "Resolved", count: stats.resolved },
+          ] as { key: CommentFilter; label: string; count: number }[]
+        ).map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            className={cn(
+              "flex h-7 flex-1 items-center justify-center gap-1 rounded-md px-2 text-[11px] font-medium transition-colors",
+              filter === option.key
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+            onClick={() => setFilter(option.key)}
+            aria-pressed={filter === option.key}
+          >
+            {option.label}
+            {option.count > 0 ? (
+              <span
+                className={cn(
+                  "rounded-full px-1 text-[10px] tabular-nums",
+                  filter === option.key
+                    ? "bg-muted text-foreground"
+                    : option.key === "open"
+                      ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"
+                      : option.key === "resolved"
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                        : "bg-muted text-muted-foreground",
+                )}
+              >
+                {option.count}
+              </span>
+            ) : null}
+          </button>
+        ))}
+      </fieldset>
+
+      {comments.length > 0 ? (
+        <div className="relative">
+          <Search
+            className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search comments…"
+            className="h-8 pl-8 text-xs"
+            aria-label="Search comments"
+          />
+          {search ? (
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+              onClick={() => setSearch("")}
+              aria-label="Clear comment search"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       <ScrollArea className="flex-1">
         <div className="flex flex-col gap-2.5 pr-2">
           {loading ? (
@@ -578,24 +666,24 @@ export function CommentsTab({ fileId }: { fileId: string | null }) {
                 </p>
               </div>
             </div>
+          ) : threads.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-10 text-center">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                <Search className="h-5 w-5 text-muted-foreground" aria-hidden />
+              </div>
+              <p className="text-sm font-medium">No matching comments</p>
+              <p className="text-xs text-muted-foreground">
+                {search.trim()
+                  ? "Try a different search term."
+                  : filter === "open"
+                    ? "All threads are resolved."
+                    : "No resolved threads yet."}
+              </p>
+            </div>
           ) : (
-            <>
-              {stats.resolved > 0 ? (
-                <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                  <span className="inline-flex items-center gap-1">
-                    <span className="h-1.5 w-1.5 rounded-full bg-violet-500" aria-hidden />
-                    {stats.open} open
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
-                    {stats.resolved} resolved
-                  </span>
-                </div>
-              ) : null}
-              {threads.map(({ root, replies }) => (
-                <CommentThread key={root.id} root={root} replies={replies} actions={actions} />
-              ))}
-            </>
+            threads.map(({ root, replies }) => (
+              <CommentThread key={root.id} root={root} replies={replies} actions={actions} />
+            ))
           )}
         </div>
       </ScrollArea>

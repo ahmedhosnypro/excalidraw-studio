@@ -12,11 +12,15 @@ export interface PresentationSlide {
   id: string;
   name: string;
   elements: ExcalidrawElement[];
+  /** The backing frame element (null for the frameless "all content" slide). */
+  frame: Extract<ExcalidrawElement, { type: "frame" }> | null;
+  /** Speaker notes persisted on the frame element's customData. */
+  notes: string;
 }
 
 type DialogName = "files" | "auth" | "shortcuts" | null;
 
-type SidebarTab = "libraries" | "comments" | "present";
+export type SidebarTab = "libraries" | "comments" | "present";
 
 interface EditorState {
   /** Imperative Excalidraw API, set once the canvas mounts. */
