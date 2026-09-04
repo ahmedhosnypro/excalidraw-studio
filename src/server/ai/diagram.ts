@@ -1,5 +1,6 @@
 import ZAI from "z-ai-web-dev-sdk";
 
+import { expandCompactElements } from "@/lib/element-factory";
 import { gqlError } from "@/server/graphql/errors";
 
 /**
@@ -88,44 +89,145 @@ function cleanText(value: unknown, max: number): string | null {
   return trimmed.length === 0 ? null : trimmed;
 }
 
-/** Parses + sanitizes the model's raw JSON into the compact element union. */
-function parseLlmElements(raw: string): LlmElement[] {
-  let text = raw.trim();
-  // Strip accidental markdown fences.
-  if (text.startsWith("```")) {
-    text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+// ---------------------------------------------------------------------------
+// JSON parsing with escalating repair (models occasionally emit near-JSON)
+// ---------------------------------------------------------------------------
+
+/**
+ * Common LLM JSON malformations, repaired in order:
+ * - backticks used as quotes: `"y=`600` → `"y"=600`
+ * - `=` used as key separator: `"y"=600` → `"y":600`
+ * - quoted numbers: `"width":"200"` → `"width":200`
+ * - trailing commas before `}` / `]`
+ */
+function repairJsonFragment(raw: string): string {
+  return raw
+    .replace(/`/g, '"')
+    .replace(/"(\w+)"\s*=/g, '"$1":')
+    .replace(/"(\w+)":"(-?\d+(?:\.\d+)?)"/g, '"$1":$2')
+    .replace(/,\s*([}\]])/g, "$1");
+}
+
+/** Tries JSON.parse with fence-stripping + outermost-object extraction. */
+function tryParseJson(text: string): unknown | null {
+  let candidate = text.trim();
+  if (candidate.startsWith("```")) {
+    candidate = candidate.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
   }
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(text) as unknown;
+    return JSON.parse(candidate) as unknown;
   } catch {
-    // Last resort: models occasionally prepend a sentence — grab the outermost
-    // JSON object instead of failing outright.
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start < 0 || end <= start) {
-      throw gqlError(
-        "INTERNAL_SERVER_ERROR",
-        "The AI returned an unreadable response — try again.",
-      );
+    // Models occasionally prepend a sentence — grab the outermost JSON object.
+    const start = candidate.indexOf("{");
+    const end = candidate.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(candidate.slice(start, end + 1)) as unknown;
+      } catch {
+        return null;
+      }
     }
-    try {
-      parsed = JSON.parse(text.slice(start, end + 1)) as unknown;
-    } catch {
-      throw gqlError(
-        "INTERNAL_SERVER_ERROR",
-        "The AI returned an unreadable response — try again.",
-      );
-    }
+    return null;
   }
+}
+
+/** Extracts balanced `{"type":…}` objects and parses each individually. */
+function salvageElementObjects(text: string): unknown[] {
+  const out: unknown[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const start = text.indexOf('{"type"', cursor);
+    if (start < 0) {
+      break;
+    }
+    let depth = 0;
+    let end = -1;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) {
+        continue;
+      }
+      if (ch === "{") {
+        depth++;
+      } else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+    }
+    if (end < 0) {
+      break;
+    }
+    const fragment = text.slice(start, end + 1);
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(fragment) as unknown;
+    } catch {
+      try {
+        parsed = JSON.parse(repairJsonFragment(fragment)) as unknown;
+      } catch {
+        parsed = null;
+      }
+    }
+    if (parsed !== null) {
+      out.push(parsed);
+    }
+    cursor = end + 1;
+  }
+  return out;
+}
+
+/** Extracts the element list from a parsed container ({elements:[…]}) or bare array. */
+function elementListOf(parsed: unknown): unknown[] | null {
   const container = parsed as { elements?: unknown };
-  const list = Array.isArray(container?.elements)
+  return Array.isArray(container?.elements)
     ? (container.elements as unknown[])
     : Array.isArray(parsed)
       ? (parsed as unknown[])
       : null;
-  if (!list) {
-    throw gqlError("INTERNAL_SERVER_ERROR", "The AI returned an unexpected format — try again.");
+}
+
+/** Parses + sanitizes the model's raw JSON into the compact element union. */
+function parseLlmElements(raw: string): LlmElement[] {
+  const text = raw.trim();
+  let parsed = tryParseJson(text);
+  let list: unknown[] | null = parsed !== null ? elementListOf(parsed) : null;
+  // Escalating repair: fix common malformations, then salvage individual
+  // element objects from partially broken output.
+  if (list === null) {
+    const repaired = repairJsonFragment(text);
+    parsed = tryParseJson(repaired);
+    if (parsed !== null) {
+      list = elementListOf(parsed);
+    }
+  }
+  if (list === null) {
+    const salvageSource = repairJsonFragment(text);
+    const salvaged = salvageElementObjects(salvageSource);
+    const fromOuter = salvageElementObjects(text);
+    const merged = salvaged.length >= fromOuter.length ? salvaged : fromOuter;
+    if (merged.length > 0) {
+      list = merged;
+    }
+  }
+  if (list === null) {
+    throw gqlError("INTERNAL_SERVER_ERROR", "The AI returned an unreadable response — try again.");
   }
 
   const seenIds = new Set<string>();
@@ -199,255 +301,6 @@ function parseLlmElements(raw: string): LlmElement[] {
 }
 
 // ---------------------------------------------------------------------------
-// Compact → Excalidraw element expansion
-// ---------------------------------------------------------------------------
-
-/** Base fields shared by every Excalidraw element (loosely typed on purpose:
- * the server never touches these beyond assembling known-good defaults). */
-interface AnyElement {
-  id: string;
-  type: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  boundElements: { id: string; type: "text" | "arrow" }[] | null;
-  [key: string]: unknown;
-}
-
-function randomSeed(): number {
-  // Excalidraw seeds are 31-bit unsigned ints.
-  return Math.floor(Math.random() * 2 ** 31);
-}
-
-function baseElement(id: string, x: number, y: number): AnyElement {
-  return {
-    type: "rectangle",
-    id: `ai_${id}_${randomSeed().toString(36)}`,
-    x,
-    y,
-    width: 160,
-    height: 80,
-    angle: 0,
-    strokeColor: "#1e1e1e",
-    backgroundColor: "transparent",
-    fillStyle: "solid",
-    strokeWidth: 2,
-    strokeStyle: "solid",
-    roughness: 1,
-    opacity: 100,
-    groupIds: [],
-    frameId: null,
-    seed: randomSeed(),
-    version: 1,
-    versionNonce: randomSeed(),
-    isDeleted: false,
-    boundElements: null,
-    updated: Date.now(),
-    link: null,
-    locked: false,
-  };
-}
-
-/** Point on `shape`'s bounding-box edge along the line towards `other`. */
-function rectEdgePoint(
-  shape: { x: number; y: number; width: number; height: number },
-  other: { x: number; y: number },
-): { x: number; y: number } {
-  const cx = shape.x + shape.width / 2;
-  const cy = shape.y + shape.height / 2;
-  const dx = other.x - cx;
-  const dy = other.y - cy;
-  if (dx === 0 && dy === 0) {
-    return { x: cx, y: cy };
-  }
-  const tx = dx !== 0 ? Math.abs(shape.width / 2 / dx) : Number.POSITIVE_INFINITY;
-  const ty = dy !== 0 ? Math.abs(shape.height / 2 / dy) : Number.POSITIVE_INFINITY;
-  const t = Math.min(tx, ty);
-  return { x: cx + t * dx, y: cy + t * dy };
-}
-
-function centerOf(shape: { x: number; y: number; width: number; height: number }): {
-  x: number;
-  y: number;
-} {
-  return { x: shape.x + shape.width / 2, y: shape.y + shape.height / 2 };
-}
-
-/** Bound label text centered on (or anchored at) a container. */
-function boundTextFor(
-  containerId: string,
-  box: { x: number; y: number; width: number; height: number },
-  text: string,
-  fontSize: number,
-): AnyElement {
-  const el = baseElement(`t${randomSeed().toString(36)}`, box.x, box.y);
-  el.type = "text";
-  el.width = box.width;
-  el.height = fontSize * 1.25;
-  el.strokeWidth = 1;
-  return Object.assign(el, {
-    text,
-    originalText: text,
-    fontSize,
-    fontFamily: 1,
-    textAlign: "center",
-    verticalAlign: "middle",
-    containerId,
-    autoResize: true,
-    lineHeight: 1.25,
-  });
-}
-
-function appendBound(element: AnyElement, entry: { id: string; type: "text" | "arrow" }): void {
-  element.boundElements = [
-    ...((element.boundElements as { id: string; type: "text" | "arrow" }[] | null) ?? []),
-    entry,
-  ];
-}
-
-/**
- * Expands validated LLM elements into full Excalidraw elements (labels become
- * bound text, arrows get bindings + geometry). Output lacks the `index` field
- * — the client assigns fractional indices when appending to a live scene.
- */
-function llmToExcalidrawElements(elements: LlmElement[]): Record<string, unknown>[] {
-  /** compact id → final element (for arrow endpoint resolution). */
-  const byCompactId = new Map<string, AnyElement>();
-  const shapeBoxes = new Map<string, { x: number; y: number; width: number; height: number }>();
-  const output: Record<string, unknown>[] = [];
-
-  // Pass 1 — shapes.
-  for (const element of elements) {
-    if (element.kind !== "shape") {
-      continue;
-    }
-    const el = baseElement(element.id, element.x, element.y);
-    el.type = element.shape;
-    el.width = element.width;
-    el.height = element.height;
-    el.roundness = element.shape === "rectangle" ? { type: 3 } : { type: 2 };
-    byCompactId.set(element.id, el);
-    shapeBoxes.set(element.id, {
-      x: element.x,
-      y: element.y,
-      width: element.width,
-      height: element.height,
-    });
-    output.push(el);
-  }
-
-  // Pass 2 — shape labels (bound text).
-  for (const element of elements) {
-    if (element.kind !== "shape" || !element.label) {
-      continue;
-    }
-    const box = shapeBoxes.get(element.id);
-    if (!box) {
-      continue;
-    }
-    const label = boundTextFor(
-      byCompactId.get(element.id)?.id ?? element.id,
-      box,
-      element.label,
-      20,
-    );
-    output.push(label);
-    const container = byCompactId.get(element.id);
-    if (container) {
-      appendBound(container, { id: label.id, type: "text" });
-    }
-  }
-
-  // Pass 3 — arrows (bindings; Excalidraw recomputes endpoints on render).
-  for (const element of elements) {
-    if (element.kind !== "arrow") {
-      continue;
-    }
-    const startBox = shapeBoxes.get(element.start);
-    const endBox = shapeBoxes.get(element.end);
-    if (!startBox || !endBox) {
-      continue; // Arrows must connect two shapes — otherwise drop.
-    }
-    const startAnchor = centerOf(startBox);
-    const endAnchor = centerOf(endBox);
-    const startPoint = rectEdgePoint(startBox, endAnchor);
-    const endPoint = rectEdgePoint(endBox, startAnchor);
-    const el = baseElement(element.id, startPoint.x, startPoint.y);
-    el.type = "arrow";
-    el.width = Math.abs(endPoint.x - startPoint.x);
-    el.height = Math.abs(endPoint.y - startPoint.y);
-    if (element.dashed) {
-      el.strokeStyle = "dashed";
-    }
-    Object.assign(el, {
-      points: [
-        [0, 0],
-        [endPoint.x - startPoint.x, endPoint.y - startPoint.y],
-      ],
-      lastCommittedPoint: null,
-      startBinding: byCompactId.has(element.start)
-        ? { elementId: byCompactId.get(element.start)?.id, focus: 0, gap: 4 }
-        : null,
-      endBinding: byCompactId.has(element.end)
-        ? { elementId: byCompactId.get(element.end)?.id, focus: 0, gap: 4 }
-        : null,
-      startArrowhead: null,
-      endArrowhead: element.endArrowhead === "none" ? null : element.endArrowhead,
-      elbowed: false,
-    });
-    // Register the arrow on its bound shapes so selection highlights work.
-    for (const boundId of [element.start, element.end]) {
-      const bound = byCompactId.get(boundId);
-      if (bound) {
-        appendBound(bound, { id: el.id, type: "arrow" });
-      }
-    }
-    output.push(el);
-    // Arrow labels bind to the arrow itself.
-    if (element.label) {
-      const midX = (startPoint.x + endPoint.x) / 2;
-      const midY = (startPoint.y + endPoint.y) / 2;
-      const label = boundTextFor(
-        el.id,
-        { x: midX - 40, y: midY - 12, width: 80, height: 24 },
-        element.label,
-        16,
-      );
-      output.push(label);
-      appendBound(el, { id: label.id, type: "text" });
-    }
-  }
-
-  // Pass 4 — standalone text elements.
-  for (const element of elements) {
-    if (element.kind !== "text") {
-      continue;
-    }
-    const el = baseElement(element.id, element.x, element.y);
-    el.type = "text";
-    el.strokeWidth = 1;
-    const fontSize = element.text.length > 80 ? 20 : 28;
-    Object.assign(el, {
-      text: element.text,
-      originalText: element.text,
-      fontSize,
-      fontFamily: 1,
-      textAlign: "left",
-      verticalAlign: "top",
-      containerId: null,
-      autoResize: true,
-      lineHeight: 1.25,
-      width: Math.min(400, element.text.length * fontSize * 0.6),
-      height: fontSize * 1.25,
-    });
-    output.push(el);
-  }
-
-  return output;
-}
-
-// ---------------------------------------------------------------------------
 // LLM invocation
 // ---------------------------------------------------------------------------
 
@@ -473,28 +326,105 @@ Layout rules:
 
 Output ONLY the JSON object.`;
 
+const IMPROVE_SYSTEM_PROMPT = `You are a diagram editor for Excalidraw. The user gives you the CURRENT elements of a diagram (compact JSON) plus an INSTRUCTION. Apply the instruction and return the COMPLETE revised set of elements.
+
+Respond with STRICT JSON only — no markdown fences, no commentary. Shape:
+{"elements":[ ... ]}
+
+Use the exact same element schema as the input:
+- {"type":"rectangle"|"ellipse"|"diamond","id":"n1","x":0,"y":0,"width":180,"height":70,"label":"short label"}
+- {"type":"arrow","id":"a1","start":"n1","end":"n2","label":"optional","dashed":false,"endArrowhead":"arrow"}
+- {"type":"text","id":"t1","x":0,"y":0,"text":"a note"}
+
+Editing rules:
+- Return the FULL element list after the edit (kept elements + changed + added). Omit deleted elements.
+- PRESERVATION: unless the instruction explicitly removes something, EVERY input element must still appear in your output (possibly moved, resized or relabeled). Silently dropping elements is a critical failure.
+- Keep ids of unchanged elements stable so they stay recognizable; new elements get fresh short ids.
+- Follow the user's instruction faithfully. Common edits: rearrange layout, add/remove steps, rename labels, change shape types, add branch arrows.
+- x grows right, y grows down. Shapes at least 150x60, at least 80px apart, NEVER overlapping. Keep coordinates close to the input region unless the instruction implies a relayout.
+- Arrows must reference ids present in your returned set. Labels max 20 chars.
+- Do not add decorative commentary elements beyond what the instruction asks.
+
+Output ONLY the JSON object.`;
+
+/** Compact element format the client sends when improving a selection. */
+interface CompactSelectionElement {
+  type: string;
+  id: string;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  label?: string | null;
+  text?: string | null;
+  start?: string | null;
+  end?: string | null;
+}
+
+const MAX_SELECTION_ELEMENTS = 40;
+
+/** Validates the client-supplied compact selection (ids, sizes, text). */
+function validateCompactSelection(raw: unknown): CompactSelectionElement[] {
+  if (!Array.isArray(raw)) {
+    throw gqlError("BAD_USER_INPUT", "Selection must be a list of elements.");
+  }
+  const seenIds = new Set<string>();
+  const out: CompactSelectionElement[] = [];
+  for (const entry of raw.slice(0, MAX_SELECTION_ELEMENTS)) {
+    if (typeof entry !== "object" || entry === null) {
+      continue;
+    }
+    const element = entry as Record<string, unknown>;
+    const type = typeof element.type === "string" ? element.type : "";
+    const id = typeof element.id === "string" ? element.id.slice(0, 32) : "";
+    if (id.length === 0 || seenIds.has(id)) {
+      continue;
+    }
+    if (
+      type === "rectangle" ||
+      type === "ellipse" ||
+      type === "diamond" ||
+      type === "arrow" ||
+      type === "text"
+    ) {
+      seenIds.add(id);
+      out.push({
+        type,
+        id,
+        x: clampNumber(element.x, -100000, 100000, 0),
+        y: clampNumber(element.y, -100000, 100000, 0),
+        width: clampNumber(element.width, 0, 100000, 160),
+        height: clampNumber(element.height, 0, 100000, 80),
+        label: cleanText(element.label, 80),
+        text: cleanText(element.text, MAX_TEXT_CHARS),
+        start: typeof element.start === "string" ? element.start.slice(0, 32) : null,
+        end: typeof element.end === "string" ? element.end.slice(0, 32) : null,
+      });
+    }
+  }
+  if (out.length === 0) {
+    throw gqlError("BAD_USER_INPUT", "Select at least one shape, arrow or text to improve.");
+  }
+  return out;
+}
+
 export interface GenerateDiagramResult {
   elements: Record<string, unknown>[];
   elementCount: number;
 }
 
-export async function generateDiagramFromPrompt(
-  userId: string,
-  rawPrompt: unknown,
-): Promise<GenerateDiagramResult> {
-  checkAiRateLimit(userId);
-  const prompt = typeof rawPrompt === "string" ? rawPrompt.trim().slice(0, 2000) : "";
-  if (prompt.length < 8) {
-    throw gqlError("BAD_USER_INPUT", "Describe the diagram you want in a few more words.");
-  }
-
+/** Runs the LLM (system + user message) and expands its JSON into elements. */
+async function completeDiagramElements(
+  systemPrompt: string,
+  userMessage: string,
+): Promise<Record<string, unknown>[]> {
   let content: string | null | undefined;
   try {
     const zai = await ZAI.create();
     const completion = await zai.chat.completions.create({
       messages: [
-        { role: "assistant", content: SYSTEM_PROMPT },
-        { role: "user", content: prompt },
+        { role: "assistant", content: systemPrompt },
+        { role: "user", content: userMessage },
       ],
       thinking: { type: "disabled" },
     });
@@ -508,7 +438,50 @@ export async function generateDiagramFromPrompt(
   if (!content || content.trim().length === 0) {
     throw gqlError("INTERNAL_SERVER_ERROR", "The AI returned an empty response — try again.");
   }
+  return expandCompactElements(parseLlmElements(content), "ai");
+}
 
-  const elements = llmToExcalidrawElements(parseLlmElements(content));
+/** Rate-limits the user + validates the prompt, returning its trimmed form. */
+function requireAIPrompt(userId: string, rawPrompt: unknown, tooShortHint: string): string {
+  checkAiRateLimit(userId);
+  const prompt = typeof rawPrompt === "string" ? rawPrompt.trim().slice(0, 2000) : "";
+  if (prompt.length < 8) {
+    throw gqlError("BAD_USER_INPUT", tooShortHint);
+  }
+  return prompt;
+}
+
+export async function generateDiagramFromPrompt(
+  userId: string,
+  rawPrompt: unknown,
+): Promise<GenerateDiagramResult> {
+  const prompt = requireAIPrompt(
+    userId,
+    rawPrompt,
+    "Describe the diagram you want in a few more words.",
+  );
+
+  const elements = await completeDiagramElements(SYSTEM_PROMPT, prompt);
+  return { elements, elementCount: elements.length };
+}
+
+export async function improveDiagramSelection(
+  userId: string,
+  rawPrompt: unknown,
+  rawSelection: unknown,
+): Promise<GenerateDiagramResult> {
+  const prompt = requireAIPrompt(
+    userId,
+    rawPrompt,
+    "Describe the change you want in a few more words.",
+  );
+  const selection = validateCompactSelection(rawSelection);
+
+  const userMessage = `INSTRUCTION: ${prompt}
+
+CURRENT ELEMENTS:
+${JSON.stringify({ elements: selection })}`;
+
+  const elements = await completeDiagramElements(IMPROVE_SYSTEM_PROMPT, userMessage);
   return { elements, elementCount: elements.length };
 }

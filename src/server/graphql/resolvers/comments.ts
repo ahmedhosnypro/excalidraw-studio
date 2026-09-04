@@ -1,12 +1,13 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { type CommentRow, comments, files, users } from "@/db/schema";
+import { type CommentRow, commentReactions, comments, files, users } from "@/db/schema";
 import { gqlError } from "@/server/graphql/errors";
 import {
   type CommentAuthorOutput,
   type CommentOutput,
+  type CommentReactionOutput,
   toCommentOutput,
 } from "@/server/graphql/types";
 import { notifyRealtimeCommentAdded } from "@/server/realtime/notify";
@@ -70,21 +71,30 @@ async function fetchCommentWithAuthor(commentId: string): Promise<CommentWithAut
   return { comment: row.comment, author: authorOf(row) };
 }
 
-/** Lists comments of a file, oldest first, with author info (no access check). */
-export async function listFileComments(fileId: string): Promise<CommentOutput[]> {
+/** Lists comments of a file, oldest first, with author info and reactions. */
+export async function listFileComments(
+  fileId: string,
+  viewerId: string | null = null,
+): Promise<CommentOutput[]> {
   const rows = await db
     .select(commentWithAuthor)
     .from(comments)
     .leftJoin(users, eq(comments.userId, users.id))
     .where(eq(comments.fileId, fileId))
     .orderBy(comments.createdAt);
-  return rows.map((row) => toCommentOutput(row.comment, authorOf(row)));
+  const reactionMap = await fetchReactions(
+    rows.map((row) => row.comment.id),
+    viewerId,
+  );
+  return rows.map((row) =>
+    toCommentOutput(row.comment, authorOf(row), reactionMap.get(row.comment.id) ?? []),
+  );
 }
 
 /** Lists comments of a viewer-owned file (thin ownership-guarded wrapper). */
 export async function listComments(userId: string, fileId: string): Promise<CommentOutput[]> {
   await requireOwnedFile(fileId, userId);
-  return listFileComments(fileId);
+  return listFileComments(fileId, userId);
 }
 
 /**
@@ -195,6 +205,25 @@ async function requireCommentForUpdate(
   return found;
 }
 
+/** Writes a patch onto a comment row and returns it with reactions. */
+async function updateCommentRow(
+  commentId: string,
+  patch: Partial<CommentRow>,
+  found: CommentWithAuthor,
+  viewerId: string,
+): Promise<CommentOutput> {
+  const updated = await db
+    .update(comments)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(eq(comments.id, commentId))
+    .returning();
+  const row = updated[0];
+  if (!row) {
+    throw gqlError("INTERNAL_SERVER_ERROR", "Failed to update the comment.");
+  }
+  return toCommentOutput(row, found.author, await reactionsOf(commentId, viewerId));
+}
+
 export async function updateComment(
   userId: string,
   commentId: string,
@@ -204,16 +233,7 @@ export async function updateComment(
   if (!found || found.comment.userId !== userId) {
     throw gqlError("FORBIDDEN", "You can only edit your own comments.");
   }
-  const updated = await db
-    .update(comments)
-    .set({ body: parseBody(body), updatedAt: new Date() })
-    .where(and(eq(comments.id, commentId), eq(comments.userId, userId)))
-    .returning();
-  const row = updated[0];
-  if (!row) {
-    throw gqlError("INTERNAL_SERVER_ERROR", "Failed to update the comment.");
-  }
-  return toCommentOutput(row, found.author);
+  return updateCommentRow(commentId, { body: parseBody(body) }, found, userId);
 }
 
 export async function resolveComment(
@@ -225,16 +245,7 @@ export async function resolveComment(
   if (typeof resolved !== "boolean") {
     throw gqlError("BAD_USER_INPUT", "`resolved` must be a boolean.");
   }
-  const updated = await db
-    .update(comments)
-    .set({ resolved, updatedAt: new Date() })
-    .where(eq(comments.id, commentId))
-    .returning();
-  const row = updated[0];
-  if (!row) {
-    throw gqlError("INTERNAL_SERVER_ERROR", "Failed to update the comment.");
-  }
-  return toCommentOutput(row, found.author);
+  return updateCommentRow(commentId, { resolved }, found, userId);
 }
 
 export async function deleteComment(userId: string, commentId: string): Promise<boolean> {
@@ -250,7 +261,124 @@ export async function deleteComment(userId: string, commentId: string): Promise<
   // Replies are removed together with their thread root (the DB also has a
   // cascade FK, but deleting explicitly keeps it correct even when the
   // foreign_keys pragma is off).
+  await db.delete(commentReactions).where(eq(commentReactions.commentId, commentId));
   await db.delete(comments).where(eq(comments.parentId, commentId));
   await db.delete(comments).where(eq(comments.id, commentId));
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Emoji reactions
+// ---------------------------------------------------------------------------
+
+/** Fixed allow-list of reaction emojis (storage stays tight + predictable). */
+const ALLOWED_REACTION_EMOJIS = ["👍", "❤️", "🎉", "😂", "😮", "✅"] as const;
+
+/**
+ * Batch-loads reaction aggregates for a set of comments. `mine` reflects the
+ * requesting viewer (null = anonymous reader, e.g. token-less shared views).
+ */
+async function fetchReactions(
+  commentIds: string[],
+  viewerId: string | null,
+): Promise<Map<string, CommentReactionOutput[]>> {
+  const map = new Map<string, CommentReactionOutput[]>();
+  if (commentIds.length === 0) {
+    return map;
+  }
+  const rows = await db
+    .select({
+      commentId: commentReactions.commentId,
+      emoji: commentReactions.emoji,
+      userId: commentReactions.userId,
+    })
+    .from(commentReactions)
+    .where(inArray(commentReactions.commentId, commentIds));
+  for (const row of rows) {
+    const list = map.get(row.commentId) ?? [];
+    const existing = list.find((reaction) => reaction.emoji === row.emoji);
+    if (existing) {
+      existing.count += 1;
+      existing.mine = existing.mine || row.userId === viewerId;
+    } else {
+      list.push({ emoji: row.emoji, count: 1, mine: row.userId === viewerId });
+    }
+    map.set(row.commentId, list);
+  }
+  // Stable, count-descending order for display.
+  for (const list of map.values()) {
+    list.sort((a, b) => b.count - a.count || a.emoji.localeCompare(b.emoji));
+  }
+  return map;
+}
+
+/** Loads a single comment's reactions (aggregated, viewer-aware). */
+async function reactionsOf(commentId: string, viewerId: string): Promise<CommentReactionOutput[]> {
+  const map = await fetchReactions([commentId], viewerId);
+  return map.get(commentId) ?? [];
+}
+
+function parseReactionEmoji(value: unknown): string {
+  if (
+    typeof value !== "string" ||
+    !ALLOWED_REACTION_EMOJIS.includes(value as (typeof ALLOWED_REACTION_EMOJIS)[number])
+  ) {
+    throw gqlError("BAD_USER_INPUT", "Unsupported reaction emoji.");
+  }
+  return value;
+}
+
+/**
+ * Toggles a viewer's emoji reaction on a comment (adds / removes). The viewer
+ * must be able to see the comment: the file owner, or a guest identity of a
+ * shared file (guest identities only exist for files shared with them).
+ * Returns the updated comment (reactions included).
+ */
+export async function toggleCommentReaction(
+  userId: string,
+  commentId: string,
+  emoji: unknown,
+): Promise<CommentOutput> {
+  const parsedEmoji = parseReactionEmoji(emoji);
+  const found = await fetchCommentWithAuthor(commentId);
+  if (!found) {
+    throw gqlError("NOT_FOUND", "Comment not found.");
+  }
+  // Access: file owner, comment author, or a guest viewer of a shared file.
+  const ownsFile =
+    (
+      await db
+        .select({ id: files.id })
+        .from(files)
+        .where(and(eq(files.id, found.comment.fileId), eq(files.userId, userId)))
+        .limit(1)
+    ).length > 0;
+  const isAuthor = found.comment.userId === userId;
+  const viewerRows = await db
+    .select({ isGuest: users.isGuest })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const isGuestViewer = viewerRows[0]?.isGuest === true;
+  if (!ownsFile && !isAuthor && !isGuestViewer) {
+    throw gqlError("FORBIDDEN", "You cannot react to this comment.");
+  }
+
+  const existing = await db
+    .select({ id: commentReactions.id })
+    .from(commentReactions)
+    .where(
+      and(
+        eq(commentReactions.commentId, commentId),
+        eq(commentReactions.userId, userId),
+        eq(commentReactions.emoji, parsedEmoji),
+      ),
+    )
+    .limit(1);
+  if (existing[0]) {
+    await db.delete(commentReactions).where(eq(commentReactions.id, existing[0].id));
+  } else {
+    await db.insert(commentReactions).values({ commentId, userId, emoji: parsedEmoji });
+  }
+  return toCommentOutput(found.comment, found.author, await reactionsOf(commentId, userId));
 }

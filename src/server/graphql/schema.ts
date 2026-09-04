@@ -14,7 +14,7 @@ import {
 } from "graphql";
 
 import { db } from "@/db";
-import { generateDiagramFromPrompt } from "@/server/ai/diagram";
+import { generateDiagramFromPrompt, improveDiagramSelection } from "@/server/ai/diagram";
 import { emptyScene, readScene } from "@/server/scenes";
 import type { ApolloContext } from "./context";
 import { assertAuthenticated } from "./errors";
@@ -24,6 +24,7 @@ import {
   deleteComment,
   listComments,
   resolveComment,
+  toggleCommentReaction,
   updateComment,
 } from "./resolvers/comments";
 import {
@@ -44,6 +45,7 @@ import {
   sharedComments,
   sharedFileSummary,
   sharedScene,
+  toggleGuestCommentReaction,
 } from "./resolvers/share";
 import { GraphQLJSON } from "./scalars";
 import {
@@ -190,10 +192,26 @@ const sharedSceneQuery: GraphQLFieldConfig<unknown, ApolloContext> = {
 
 const sharedCommentsQuery: GraphQLFieldConfig<unknown, ApolloContext> = {
   type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(CommentType))),
-  description: "Lists comments of a shared file (oldest first).",
-  args: { token: { type: new GraphQLNonNull(GraphQLString) } },
-  resolve: (_source, args) => sharedComments(args.token),
+  description:
+    "Lists comments of a shared file (oldest first), with the guest viewer's own reaction flags.",
+  args: {
+    token: { type: new GraphQLNonNull(GraphQLString) },
+    viewerGuestName: {
+      type: GraphQLString,
+      description: "Display name of the viewing guest (marks their own reactions).",
+    },
+  },
+  resolve: (_source, args) => sharedComments(args.token, args.viewerGuestName),
 };
+
+/** Best-effort client IP for public (token-scoped) guest mutations. */
+function clientIpOf(context: ApolloContext): string {
+  return (
+    context.requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    context.requestHeaders.get("x-real-ip") ??
+    "local"
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Mutation fields (files)
@@ -319,10 +337,7 @@ const addGuestCommentMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
     y: { type: GraphQLFloat },
   },
   resolve: (_source, args, context) => {
-    const ip =
-      context.requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-      context.requestHeaders.get("x-real-ip") ??
-      "local";
+    const ip = clientIpOf(context);
     return addGuestComment(
       args.token,
       args.guestName,
@@ -404,6 +419,35 @@ const deleteCommentMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
   },
 };
 
+const toggleCommentReactionMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
+  type: new GraphQLNonNull(CommentType),
+  description: "Toggle the viewer's emoji reaction on a comment (adds or removes it).",
+  args: {
+    id: { type: new GraphQLNonNull(GraphQLID) },
+    emoji: { type: new GraphQLNonNull(GraphQLString) },
+  },
+  resolve: (_source, args, context) => {
+    assertAuthenticated(context.userId);
+    return toggleCommentReaction(context.userId, String(args.id), args.emoji);
+  },
+};
+
+const toggleGuestCommentReactionMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
+  type: new GraphQLNonNull(CommentType),
+  description:
+    "Toggle a guest's emoji reaction on a shared-file comment (token-scoped, name-keyed identity).",
+  args: {
+    token: { type: new GraphQLNonNull(GraphQLString) },
+    guestName: { type: new GraphQLNonNull(GraphQLString) },
+    id: { type: new GraphQLNonNull(GraphQLID) },
+    emoji: { type: new GraphQLNonNull(GraphQLString) },
+  },
+  resolve: (_source, args, context) => {
+    const ip = clientIpOf(context);
+    return toggleGuestCommentReaction(args.token, args.guestName, String(args.id), args.emoji, ip);
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Mutation fields (AI)
 // ---------------------------------------------------------------------------
@@ -418,6 +462,22 @@ const generateDiagramMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
   resolve: (_source, args, context) => {
     assertAuthenticated(context.userId);
     return generateDiagramFromPrompt(context.userId, args.prompt);
+  },
+};
+
+const improveDiagramMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
+  type: new GraphQLNonNull(GenerateDiagramType),
+  description:
+    "Revises a compact selection of Excalidraw elements according to a natural-language instruction (AI improve-selection). Returns the full replacement element set without `index`.",
+  args: {
+    prompt: { type: new GraphQLNonNull(GraphQLString) },
+    elements: {
+      type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(GraphQLJSON))),
+    },
+  },
+  resolve: (_source, args, context) => {
+    assertAuthenticated(context.userId);
+    return improveDiagramSelection(context.userId, args.prompt, args.elements);
   },
 };
 
@@ -456,10 +516,13 @@ export const schema = new GraphQLSchema({
       updateComment: updateCommentMutation,
       resolveComment: resolveCommentMutation,
       deleteComment: deleteCommentMutation,
+      toggleCommentReaction: toggleCommentReactionMutation,
+      toggleGuestCommentReaction: toggleGuestCommentReactionMutation,
       createShareLink: createShareLinkMutation,
       revokeShareLink: revokeShareLinkMutation,
       addGuestComment: addGuestCommentMutation,
       generateDiagram: generateDiagramMutation,
+      improveDiagram: improveDiagramMutation,
     },
   }),
 });

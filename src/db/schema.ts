@@ -7,6 +7,7 @@ import {
   real,
   sqliteTable,
   text,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
 const uuid = () => crypto.randomUUID();
@@ -82,6 +83,26 @@ export const comments = sqliteTable(
     index("comments_file_id_idx").on(table.fileId),
     index("comments_user_id_idx").on(table.userId),
     index("comments_parent_id_idx").on(table.parentId),
+  ],
+);
+
+export const commentReactions = sqliteTable(
+  "comment_reactions",
+  {
+    id: text("id").primaryKey().$defaultFn(uuid),
+    commentId: text("comment_id")
+      .notNull()
+      .references(() => comments.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** A single emoji from the fixed allow-list (see server resolvers). */
+    emoji: text("emoji").notNull(),
+    createdAt: createdAtColumn(),
+  },
+  (table) => [
+    index("comment_reactions_comment_id_idx").on(table.commentId),
+    uniqueIndex("comment_reactions_unique_idx").on(table.commentId, table.userId, table.emoji),
   ],
 );
 

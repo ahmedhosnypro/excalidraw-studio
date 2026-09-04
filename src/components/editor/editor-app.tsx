@@ -34,9 +34,13 @@ async function applyScene(
   if (!api) {
     return;
   }
+  // GraphQL results arrive deep-frozen (Apollo dev cache) while Excalidraw
+  // may need to mutate elements (e.g. syncInvalidIndices back-fills a missing
+  // `index`) — cloning up-front avoids "object is not extensible" crashes.
+  const thawed = JSON.parse(JSON.stringify(elements)) as ExcalidrawElement[];
   api.updateScene({
-    elements: elements as ExcalidrawElement[],
-    appState: (appState ?? {}) as Pick<AppState, keyof AppState>,
+    elements: thawed,
+    appState: JSON.parse(JSON.stringify(appState ?? {})) as Pick<AppState, keyof AppState>,
   });
   const filesList = sceneFilesToArray(files);
   if (filesList.length > 0) {

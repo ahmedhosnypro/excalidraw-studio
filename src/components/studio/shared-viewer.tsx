@@ -154,9 +154,11 @@ export function SharedViewer({ token }: { token: string }) {
     const firstApply = sceneAppliedRef.current === null;
     sceneAppliedRef.current = scene;
     // First scene: initialData already mounted it — only later updates need
-    // an explicit updateScene push.
+    // an explicit updateScene push. Elements are cloned: Apollo dev cache
+    // freezes results and Excalidraw may mutate elements (index back-fill).
     if (!firstApply) {
-      excalidrawApi.updateScene({ elements: scene.elements as ExcalidrawElement[] });
+      const thawed = JSON.parse(JSON.stringify(scene.elements)) as ExcalidrawElement[];
+      excalidrawApi.updateScene({ elements: thawed });
       const filesList = sceneFilesToArray(scene.files);
       if (filesList.length > 0) {
         void excalidrawApi.addFiles(filesList);
@@ -170,7 +172,9 @@ export function SharedViewer({ token }: { token: string }) {
     }
     const appState = { ...(scene.appState as Partial<AppState>), viewModeEnabled: true };
     return {
-      elements: scene.elements as ExcalidrawElement[],
+      // Clone for the same frozen-cache reason as above — Excalidraw owns
+      // and mutates the elements it renders.
+      elements: JSON.parse(JSON.stringify(scene.elements)) as ExcalidrawElement[],
       appState,
     };
   }, [scene]);

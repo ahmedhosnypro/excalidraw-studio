@@ -12,6 +12,7 @@ import {
   FilePlus2,
   FolderOpen,
   LayoutGrid,
+  LayoutTemplate,
   Link2,
   List,
   Loader2,
@@ -24,6 +25,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileThumbnail } from "@/components/studio/file-thumbnail";
 import { SharedBadge } from "@/components/studio/share-dialog";
+import { TemplateGallery } from "@/components/studio/template-gallery";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -57,8 +59,10 @@ import {
   FILES_QUERY,
   ME_QUERY,
   RENAME_FILE_MUTATION,
+  SAVE_SCENE_MUTATION,
   STORAGE_USAGE_QUERY,
 } from "@/lib/graphql/operations";
+import { type SceneTemplate, templateElements } from "@/lib/templates";
 import { formatRelativeDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { useEditorStore } from "@/store/editor-store";
@@ -550,6 +554,9 @@ export function FilesDialog({ onOpenFile }: { onOpenFile: (file: FileGql) => voi
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortKey>("updated");
   const [view, setView] = useState<ViewMode>("grid");
+  const gallery = useEditorStore((state) => state.filesDialogView);
+  const setGallery = useEditorStore((state) => state.setFilesDialogView);
+  const [busyTemplateId, setBusyTemplateId] = useState<string | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
@@ -566,6 +573,7 @@ export function FilesDialog({ onOpenFile }: { onOpenFile: (file: FileGql) => voi
       setSelectMode(false);
       setSelectedIds(new Set());
       setBatchDialogOpen(false);
+      setBusyTemplateId(null);
     }
   }
 
@@ -579,6 +587,9 @@ export function FilesDialog({ onOpenFile }: { onOpenFile: (file: FileGql) => voi
   });
 
   const [createFile] = useMutation<FileMutationData, FileMutationVariables>(CREATE_FILE_MUTATION, {
+    refetchQueries: [{ query: ME_QUERY }, "Files", "StorageUsage"],
+  });
+  const [saveScene] = useMutation<FileMutationData, FileMutationVariables>(SAVE_SCENE_MUTATION, {
     refetchQueries: [{ query: ME_QUERY }, "Files", "StorageUsage"],
   });
   const [deleteFile] = useMutation<{ deleteFile: boolean }, FileMutationVariables>(
@@ -620,6 +631,39 @@ export function FilesDialog({ onOpenFile }: { onOpenFile: (file: FileGql) => voi
       });
     }
   }, [closeDialog, createFile, onOpenFile, toast]);
+
+  /** Creates a cloud file pre-filled with a template's elements. */
+  const handleCreateFromTemplate = useCallback(
+    async (template: SceneTemplate) => {
+      setBusyTemplateId(template.id);
+      try {
+        const result = await createFile({ variables: { name: template.name } });
+        const file = result.data?.createFile;
+        if (file) {
+          // Write the template scene BEFORE opening (the open flow reads the
+          // stored scene from disk).
+          await saveScene({
+            variables: { fileId: file.id, data: { elements: templateElements(template) } },
+          });
+          onOpenFile(file);
+          closeDialog();
+          toast({
+            title: `${template.name} ready`,
+            description: "Template applied — edit freely, it autosaves like any drawing.",
+          });
+        }
+      } catch (error) {
+        toast({
+          title: "Could not create from template",
+          description: error instanceof Error ? error.message : "Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setBusyTemplateId(null);
+      }
+    },
+    [closeDialog, createFile, onOpenFile, saveScene, toast],
+  );
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((previous) => {
@@ -703,88 +747,115 @@ export function FilesDialog({ onOpenFile }: { onOpenFile: (file: FileGql) => voi
           {isAuthenticated ? (
             <>
               <div className="flex items-center gap-2">
-                <div className="relative min-w-0 flex-1">
-                  <Search
-                    className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                    aria-hidden
-                  />
-                  <Input
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Search files…"
-                    className="pl-8"
-                  />
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-9 gap-1.5 px-2.5">
-                      <activeSort.icon className="h-4 w-4 text-muted-foreground" aria-hidden />
-                      <span className="hidden sm:inline">{activeSort.label}</span>
-                      <span className="sm:hidden">Sort</span>
+                {gallery === "files" ? (
+                  <div className="relative min-w-0 flex-1">
+                    <Search
+                      className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                      aria-hidden
+                    />
+                    <Input
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="Search files…"
+                      className="pl-8"
+                    />
+                  </div>
+                ) : (
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">Starter templates</p>
+                  </div>
+                )}
+                {gallery === "files" ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-9 gap-1.5 px-2.5">
+                        <activeSort.icon className="h-4 w-4 text-muted-foreground" aria-hidden />
+                        <span className="hidden sm:inline">{activeSort.label}</span>
+                        <span className="sm:hidden">Sort</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {SORT_OPTIONS.map((option) => (
+                        <DropdownMenuItem key={option.key} onSelect={() => setSort(option.key)}>
+                          <option.icon className="mr-2 h-4 w-4" aria-hidden />
+                          {option.label}
+                          {sort === option.key ? (
+                            <Check className="ml-auto h-3.5 w-3.5 text-primary" aria-hidden />
+                          ) : null}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : null}
+                {gallery === "files" ? (
+                  <fieldset
+                    className="flex items-center rounded-md border border-border p-0.5"
+                    aria-label="View mode"
+                  >
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={cn("h-7 w-7 p-0", view === "grid" && "bg-muted text-foreground")}
+                      onClick={() => setView("grid")}
+                      aria-pressed={view === "grid"}
+                      aria-label="Grid view"
+                      title="Grid view"
+                    >
+                      <LayoutGrid className="h-4 w-4" aria-hidden />
                     </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {SORT_OPTIONS.map((option) => (
-                      <DropdownMenuItem key={option.key} onSelect={() => setSort(option.key)}>
-                        <option.icon className="mr-2 h-4 w-4" aria-hidden />
-                        {option.label}
-                        {sort === option.key ? (
-                          <Check className="ml-auto h-3.5 w-3.5 text-primary" aria-hidden />
-                        ) : null}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <fieldset
-                  className="flex items-center rounded-md border border-border p-0.5"
-                  aria-label="View mode"
-                >
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={cn("h-7 w-7 p-0", view === "list" && "bg-muted text-foreground")}
+                      onClick={() => setView("list")}
+                      aria-pressed={view === "list"}
+                      aria-label="List view"
+                      title="List view"
+                    >
+                      <List className="h-4 w-4" aria-hidden />
+                    </Button>
+                  </fieldset>
+                ) : null}
+                {gallery === "files" ? (
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
-                    className={cn("h-7 w-7 p-0", view === "grid" && "bg-muted text-foreground")}
-                    onClick={() => setView("grid")}
-                    aria-pressed={view === "grid"}
-                    aria-label="Grid view"
-                    title="Grid view"
+                    className={cn(
+                      "h-9 gap-1.5 px-2.5",
+                      isSelecting && "border-primary/50 text-primary",
+                    )}
+                    onClick={() => {
+                      setSelectMode((value) => !value);
+                      if (selectMode) {
+                        setSelectedIds(new Set());
+                      }
+                    }}
+                    aria-pressed={selectMode}
+                    aria-label="Select files for batch actions"
+                    title="Select files for batch actions"
                   >
-                    <LayoutGrid className="h-4 w-4" aria-hidden />
+                    {selectMode ? (
+                      <CheckSquare className="h-4 w-4" aria-hidden />
+                    ) : (
+                      <Square className="h-4 w-4" aria-hidden />
+                    )}
+                    <span className="hidden sm:inline">{selectMode ? "Done" : "Select"}</span>
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className={cn("h-7 w-7 p-0", view === "list" && "bg-muted text-foreground")}
-                    onClick={() => setView("list")}
-                    aria-pressed={view === "list"}
-                    aria-label="List view"
-                    title="List view"
-                  >
-                    <List className="h-4 w-4" aria-hidden />
-                  </Button>
-                </fieldset>
+                ) : null}
                 <Button
                   variant="outline"
                   size="sm"
                   className={cn(
                     "h-9 gap-1.5 px-2.5",
-                    isSelecting && "border-primary/50 text-primary",
+                    gallery === "templates" && "border-primary/50 text-primary",
                   )}
-                  onClick={() => {
-                    setSelectMode((value) => !value);
-                    if (selectMode) {
-                      setSelectedIds(new Set());
-                    }
-                  }}
-                  aria-pressed={selectMode}
-                  aria-label="Select files for batch actions"
-                  title="Select files for batch actions"
+                  onClick={() => setGallery(gallery === "templates" ? "files" : "templates")}
+                  aria-pressed={gallery === "templates"}
+                  aria-label="Browse starter templates"
+                  title="Start a new drawing from a template"
                 >
-                  {selectMode ? (
-                    <CheckSquare className="h-4 w-4" aria-hidden />
-                  ) : (
-                    <Square className="h-4 w-4" aria-hidden />
-                  )}
-                  <span className="hidden sm:inline">{selectMode ? "Done" : "Select"}</span>
+                  <LayoutTemplate className="h-4 w-4" aria-hidden />
+                  <span className="hidden sm:inline">Templates</span>
                 </Button>
                 <Button onClick={() => void handleCreate()}>
                   <FilePlus2 className="mr-2 h-4 w-4" aria-hidden />
@@ -792,112 +863,136 @@ export function FilesDialog({ onOpenFile }: { onOpenFile: (file: FileGql) => voi
                 </Button>
               </div>
 
-              {isSelecting ? (
-                <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-1.5">
-                  <span className="text-xs text-muted-foreground">
-                    {selectedIds.size} of {files.length} selected
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto h-7 px-2 text-[11px]"
-                    onClick={() => setSelectedIds(new Set(files.map((file) => file.id)))}
-                    disabled={files.length === 0}
-                  >
-                    Select all
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-[11px]"
-                    onClick={() => setSelectedIds(new Set())}
-                    disabled={selectedIds.size === 0}
-                  >
-                    Clear
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    className="h-7 gap-1.5 px-2.5 text-[11px]"
-                    onClick={() => setBatchDialogOpen(true)}
-                    disabled={selectedIds.size === 0}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                    Delete {selectedIds.size > 0 ? selectedIds.size : ""}
-                  </Button>
+              {gallery === "templates" ? (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-1.5">
+                    <LayoutTemplate
+                      className="h-3.5 w-3.5 shrink-0 text-violet-600 dark:text-violet-400"
+                      aria-hidden
+                    />
+                    <p className="text-[11px] leading-snug text-muted-foreground">
+                      Pick a starter — a new cloud file is created with the shapes ready to edit.
+                    </p>
+                  </div>
+                  <ScrollArea className="max-h-[22rem] -mx-1 px-1">
+                    <TemplateGallery
+                      busyTemplateId={busyTemplateId}
+                      onCreate={(template) => void handleCreateFromTemplate(template)}
+                    />
+                  </ScrollArea>
                 </div>
-              ) : null}
-
-              <ScrollArea className="max-h-[22rem] -mx-1 px-1">
-                {loading ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground">Loading files…</p>
-                ) : files.length === 0 ? (
-                  <div className="flex flex-col items-center gap-3 py-12 text-center">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                      <FolderOpen className="h-6 w-6 text-muted-foreground" aria-hidden />
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium">
-                        {search.trim() ? "No matches" : "No drawings yet"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {search.trim()
-                          ? "Try a different search term."
-                          : "Create your first file — everything you draw autosaves to your account."}
-                      </p>
-                    </div>
-                    {search.trim() ? null : (
-                      <Button size="sm" onClick={() => void handleCreate()} className="gap-1.5">
-                        <FilePlus2 className="h-4 w-4" aria-hidden />
-                        New drawing
+              ) : (
+                <>
+                  {isSelecting ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-1.5">
+                      <span className="text-xs text-muted-foreground">
+                        {selectedIds.size} of {files.length} selected
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="ml-auto h-7 px-2 text-[11px]"
+                        onClick={() => setSelectedIds(new Set(files.map((file) => file.id)))}
+                        disabled={files.length === 0}
+                      >
+                        Select all
                       </Button>
-                    )}
-                  </div>
-                ) : view === "grid" ? (
-                  <div className="grid grid-cols-2 gap-2 pr-2 sm:grid-cols-3">
-                    {files.map((file) => (
-                      <FileEntry
-                        key={file.id}
-                        file={file}
-                        active={file.id === activeFileId}
-                        variant="grid"
-                        selectMode={isSelecting}
-                        selected={selectedIds.has(file.id)}
-                        onOpen={handleOpen}
-                        onRenamed={handleRenamed}
-                        onToggleSelect={toggleSelect}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-1 pr-2">
-                    {files.map((file) => (
-                      <FileEntry
-                        key={file.id}
-                        file={file}
-                        active={file.id === activeFileId}
-                        variant="row"
-                        selectMode={isSelecting}
-                        selected={selectedIds.has(file.id)}
-                        onOpen={handleOpen}
-                        onRenamed={handleRenamed}
-                        onToggleSelect={toggleSelect}
-                      />
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-[11px]"
+                        onClick={() => setSelectedIds(new Set())}
+                        disabled={selectedIds.size === 0}
+                      >
+                        Clear
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="h-7 gap-1.5 px-2.5 text-[11px]"
+                        onClick={() => setBatchDialogOpen(true)}
+                        disabled={selectedIds.size === 0}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                        Delete {selectedIds.size > 0 ? selectedIds.size : ""}
+                      </Button>
+                    </div>
+                  ) : null}
 
-              {usageData ? (
-                <div className="flex items-center gap-2 border-t border-border/70 pt-2 text-[11px] text-muted-foreground">
-                  <Database className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                  <span>
-                    {usageData.storageUsage.fileCount}
-                    {usageData.storageUsage.fileCount === 1 ? " drawing" : " drawings"} ·{" "}
-                    {formatBytes(usageData.storageUsage.bytes)} stored in your workspace
-                  </span>
-                </div>
-              ) : null}
+                  <ScrollArea className="max-h-[22rem] -mx-1 px-1">
+                    {loading ? (
+                      <p className="py-8 text-center text-sm text-muted-foreground">
+                        Loading files…
+                      </p>
+                    ) : files.length === 0 ? (
+                      <div className="flex flex-col items-center gap-3 py-12 text-center">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                          <FolderOpen className="h-6 w-6 text-muted-foreground" aria-hidden />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">
+                            {search.trim() ? "No matches" : "No drawings yet"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {search.trim()
+                              ? "Try a different search term."
+                              : "Create your first file — everything you draw autosaves to your account."}
+                          </p>
+                        </div>
+                        {search.trim() ? null : (
+                          <Button size="sm" onClick={() => void handleCreate()} className="gap-1.5">
+                            <FilePlus2 className="h-4 w-4" aria-hidden />
+                            New drawing
+                          </Button>
+                        )}
+                      </div>
+                    ) : view === "grid" ? (
+                      <div className="grid grid-cols-2 gap-2 pr-2 sm:grid-cols-3">
+                        {files.map((file) => (
+                          <FileEntry
+                            key={file.id}
+                            file={file}
+                            active={file.id === activeFileId}
+                            variant="grid"
+                            selectMode={isSelecting}
+                            selected={selectedIds.has(file.id)}
+                            onOpen={handleOpen}
+                            onRenamed={handleRenamed}
+                            onToggleSelect={toggleSelect}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-1 pr-2">
+                        {files.map((file) => (
+                          <FileEntry
+                            key={file.id}
+                            file={file}
+                            active={file.id === activeFileId}
+                            variant="row"
+                            selectMode={isSelecting}
+                            selected={selectedIds.has(file.id)}
+                            onOpen={handleOpen}
+                            onRenamed={handleRenamed}
+                            onToggleSelect={toggleSelect}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </ScrollArea>
+
+                  {usageData ? (
+                    <div className="flex items-center gap-2 border-t border-border/70 pt-2 text-[11px] text-muted-foreground">
+                      <Database className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      <span>
+                        {usageData.storageUsage.fileCount}
+                        {usageData.storageUsage.fileCount === 1 ? " drawing" : " drawings"} ·{" "}
+                        {formatBytes(usageData.storageUsage.bytes)} stored in your workspace
+                      </span>
+                    </div>
+                  ) : null}
+                </>
+              )}
             </>
           ) : (
             <div className="flex flex-col items-center gap-4 py-6">

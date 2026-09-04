@@ -17,6 +17,7 @@ import {
   Grid3x3,
   Hand,
   Image as ImageIcon,
+  LayoutTemplate,
   Link2,
   LogIn,
   LogOut,
@@ -38,6 +39,7 @@ import {
   Sun,
   Type,
   Undo2,
+  Wand2,
   Waypoints,
   Zap,
   ZoomIn,
@@ -54,6 +56,7 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { useStudioMutations } from "@/hooks/use-studio-mutations";
+import { useToast } from "@/hooks/use-toast";
 import type { FileGql, UserGql } from "@/lib/graphql/operations";
 import { printSlides } from "@/lib/print-slides";
 import { buildSlides } from "@/lib/slides";
@@ -152,6 +155,7 @@ export function CommandPalette({
   const [open, setOpen] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
   const { createFile, logout } = useStudioMutations();
+  const { toast } = useToast();
 
   // Global palette shortcuts: Ctrl+K, Ctrl+/ and Ctrl+Shift+P.
   useEffect(() => {
@@ -252,6 +256,13 @@ export function CommandPalette({
           perform: () => void handleNewFile(),
         },
         {
+          id: "new-from-template",
+          label: "New from template…",
+          icon: <LayoutTemplate />,
+          keywords: "create new template starter flowchart kanban mind map retro wireframe",
+          perform: () => useEditorStore.getState().openFilesDialog("templates"),
+        },
+        {
           id: "save",
           label: "Save",
           icon: <Save />,
@@ -274,6 +285,26 @@ export function CommandPalette({
           shortcut: "Ctrl+M",
           keywords: "ai generate diagram text to prompt magic llm flowchart chart",
           perform: () => useEditorStore.getState().openDialog("ai"),
+        },
+        {
+          id: "ai-improve",
+          label: "Improve selection with AI…",
+          icon: <Wand2 />,
+          keywords: "ai improve edit selection revise rearrange magic wand rework",
+          perform: () => {
+            const api = useEditorStore.getState().excalidrawApi;
+            const selected = Object.values(api?.getAppState().selectedElementIds ?? {}).some(
+              Boolean,
+            );
+            if (!selected) {
+              toast({
+                title: "Nothing selected",
+                description: "Select one or more elements on the canvas, then run this command.",
+              });
+              return;
+            }
+            useEditorStore.getState().openDialog("ai");
+          },
         },
         {
           id: "signout",
@@ -310,7 +341,7 @@ export function CommandPalette({
     }
 
     return commands;
-  }, [handleNewFile, handleSignOut, resolvedTheme, setTheme, user]);
+  }, [handleNewFile, handleSignOut, resolvedTheme, setTheme, toast, user]);
 
   const exportCommands = useMemo<PaletteCommand[]>(
     () => [

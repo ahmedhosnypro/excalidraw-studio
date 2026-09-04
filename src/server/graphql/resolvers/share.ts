@@ -9,7 +9,7 @@ import type { CommentOutput, FileOutput, SceneDataOutput } from "@/server/graphq
 import { toFileOutput } from "@/server/graphql/types";
 import { notifyRealtimeCommentAdded } from "@/server/realtime/notify";
 import { emptyScene, readScene } from "@/server/scenes";
-import { insertComment, listFileComments } from "./comments";
+import { insertComment, listFileComments, toggleCommentReaction } from "./comments";
 import { requireOwnedFile } from "./files";
 
 const guestNameSchema = z
@@ -110,9 +110,27 @@ export async function sharedScene(token: unknown): Promise<SceneDataOutput> {
   };
 }
 
-export async function sharedComments(token: unknown): Promise<CommentOutput[]> {
+export async function sharedComments(
+  token: unknown,
+  viewerGuestName: unknown,
+): Promise<CommentOutput[]> {
   const file = await requireSharedFile(token);
-  return listFileComments(file.id);
+  // Resolve the guest identity (read-only) so reaction "mine" flags reflect
+  // the guest viewer's own reactions.
+  let viewerId: string | null = null;
+  if (typeof viewerGuestName === "string" && viewerGuestName.trim().length > 0) {
+    const digest = createHash("sha256")
+      .update(`${file.id}:${viewerGuestName.trim().toLowerCase()}`)
+      .digest("hex");
+    const email = `guest+${digest.slice(0, 16)}@guests.studio`;
+    const rows = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+    viewerId = rows[0]?.id ?? null;
+  }
+  return listFileComments(file.id, viewerId);
 }
 
 // ---------------------------------------------------------------------------
@@ -177,6 +195,20 @@ async function findOrCreateGuestUser(fileId: string, name: string): Promise<stri
   return row.id;
 }
 
+/** Resolves a validated guest identity for a share token (rate-limited). */
+async function requireGuestIdentity(
+  file: FileRow,
+  guestName: unknown,
+  clientKey: string,
+): Promise<string> {
+  checkGuestRateLimit(clientKey);
+  const parsedName = guestNameSchema.safeParse(guestName);
+  if (!parsedName.success) {
+    throw gqlError("BAD_USER_INPUT", parsedName.error.issues[0]?.message ?? "Invalid guest name.");
+  }
+  return findOrCreateGuestUser(file.id, parsedName.data);
+}
+
 export async function addGuestComment(
   token: unknown,
   guestName: unknown,
@@ -187,16 +219,12 @@ export async function addGuestComment(
   clientKey: string,
 ): Promise<CommentOutput> {
   const file = await requireSharedFile(token);
-  checkGuestRateLimit(clientKey);
-  const parsedName = guestNameSchema.safeParse(guestName);
-  if (!parsedName.success) {
-    throw gqlError("BAD_USER_INPUT", parsedName.error.issues[0]?.message ?? "Invalid guest name.");
-  }
-  const guestId = await findOrCreateGuestUser(file.id, parsedName.data);
+  const guestId = await requireGuestIdentity(file, guestName, clientKey);
+  const displayName = typeof guestName === "string" ? guestName.trim().slice(0, 60) : "guest";
   const comment = await insertComment({
     fileId: file.id,
     userId: guestId,
-    author: { id: guestId, name: parsedName.data, isGuest: true },
+    author: { id: guestId, name: displayName, isGuest: true },
     body,
     x,
     y,
@@ -206,10 +234,23 @@ export async function addGuestComment(
   if (file.shareToken) {
     void notifyRealtimeCommentAdded({
       token: file.shareToken,
-      authorName: parsedName.data,
+      authorName: displayName,
       isGuest: true,
       body: comment.body,
     });
   }
   return comment;
+}
+
+/** Guest-side emoji reaction toggle (token-scoped, name-keyed identity). */
+export async function toggleGuestCommentReaction(
+  token: unknown,
+  guestName: unknown,
+  commentId: string,
+  emoji: unknown,
+  clientKey: string,
+): Promise<CommentOutput> {
+  const file = await requireSharedFile(token);
+  const guestId = await requireGuestIdentity(file, guestName, clientKey);
+  return toggleCommentReaction(guestId, commentId, emoji);
 }

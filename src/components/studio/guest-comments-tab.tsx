@@ -21,8 +21,14 @@ import type {
   GuestCommentMutationVariables,
   SharedCommentsQueryData,
   SharedCommentsQueryVariables,
+  ToggleGuestReactionMutationData,
+  ToggleGuestReactionMutationVariables,
 } from "@/lib/graphql/operations";
-import { ADD_GUEST_COMMENT_MUTATION, SHARED_COMMENTS_QUERY } from "@/lib/graphql/operations";
+import {
+  ADD_GUEST_COMMENT_MUTATION,
+  SHARED_COMMENTS_QUERY,
+  TOGGLE_GUEST_REACTION_MUTATION,
+} from "@/lib/graphql/operations";
 import { cn } from "@/lib/utils";
 import { useEditorStore } from "@/store/editor-store";
 
@@ -59,16 +65,23 @@ export function GuestCommentsTab({ token }: { token: string }) {
   const viewport = useEditorStore((state) => state.viewport);
   const excalidrawApi = useEditorStore((state) => state.excalidrawApi);
 
-  const { data, loading } = useQuery<SharedCommentsQueryData, SharedCommentsQueryVariables>(
-    SHARED_COMMENTS_QUERY,
-    { variables: { token } },
-  );
+  const {
+    data,
+    loading,
+    refetch: refetchComments,
+  } = useQuery<SharedCommentsQueryData, SharedCommentsQueryVariables>(SHARED_COMMENTS_QUERY, {
+    // The guest name feeds viewerGuestName so their own reactions are
+    // flagged "mine". Re-subscribes when the name changes.
+    variables: { token, viewerGuestName: guestName.trim() || undefined },
+  });
   const [addGuestComment, mutation] = useMutation<
     GuestCommentMutationData,
     GuestCommentMutationVariables
-  >(ADD_GUEST_COMMENT_MUTATION, {
-    refetchQueries: [{ query: SHARED_COMMENTS_QUERY, variables: { token } }],
-  });
+  >(ADD_GUEST_COMMENT_MUTATION);
+  const [toggleGuestReaction] = useMutation<
+    ToggleGuestReactionMutationData,
+    ToggleGuestReactionMutationVariables
+  >(TOGGLE_GUEST_REACTION_MUTATION);
 
   const comments = data?.sharedComments ?? [];
 
@@ -96,11 +109,14 @@ export function GuestCommentsTab({ token }: { token: string }) {
             y: parentId ? null : pinLocation.y,
           },
         });
+        // Refetch with the CURRENT variables (name included) so reaction
+        // "mine" flags and the fresh comment list both land.
+        await refetchComments();
       } catch {
         // Errors surface through the mutation state chip below.
       }
     },
-    [addGuestComment, guestName, pinLocation, token],
+    [addGuestComment, guestName, pinLocation, refetchComments, token],
   );
 
   const handleAdd = useCallback(async () => {
@@ -126,8 +142,25 @@ export function GuestCommentsTab({ token }: { token: string }) {
         }
         centerCanvasOn(excalidrawApi, comment.x, comment.y, viewport.zoom);
       },
+      onToggleReaction: async (id: string, emoji: string) => {
+        const trimmedName = guestName.trim();
+        if (trimmedName.length === 0) {
+          setNameError("Add your name above to react.");
+          return;
+        }
+        storeGuestName(trimmedName);
+        try {
+          await toggleGuestReaction({
+            variables: { token, guestName: trimmedName, id, emoji },
+          });
+          await refetchComments();
+        } catch {
+          // The refetch keeps the UI consistent; failures show as untouched
+          // chips.
+        }
+      },
     }),
-    [excalidrawApi, post, viewport],
+    [excalidrawApi, guestName, post, refetchComments, token, toggleGuestReaction, viewport],
   );
 
   // Surface name-related mutation errors on the name field (render-time

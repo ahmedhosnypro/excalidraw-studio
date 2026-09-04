@@ -12,6 +12,7 @@ import {
   Reply,
   Search,
   Send,
+  SmilePlus,
   Trash2,
   X,
 } from "lucide-react";
@@ -25,14 +26,18 @@ import type {
   CommentGql,
   CommentMutationData,
   CommentMutationVariables,
+  CommentReactionGql,
   CommentsQueryData,
   CommentsQueryVariables,
+  ToggleReactionMutationData,
+  ToggleReactionMutationVariables,
 } from "@/lib/graphql/operations";
 import {
   ADD_COMMENT_MUTATION,
   COMMENTS_QUERY,
   DELETE_COMMENT_MUTATION,
   RESOLVE_COMMENT_MUTATION,
+  TOGGLE_COMMENT_REACTION_MUTATION,
   UPDATE_COMMENT_MUTATION,
 } from "@/lib/graphql/operations";
 import { formatRelativeDate } from "@/lib/time";
@@ -84,6 +89,129 @@ function CommentAvatar({ name, size = "sm" }: { name: string; size?: "sm" | "xs"
 }
 
 // ---------------------------------------------------------------------------
+// Emoji reactions
+// ---------------------------------------------------------------------------
+
+/** Must match the server allow-list (kept client-side for the picker UI). */
+const REACTION_EMOJIS = ["👍", "❤️", "🎉", "😂", "😮", "✅"] as const;
+
+/**
+ * Reaction row for one comment: aggregate chips (toggle your own reaction) +
+ * an expandable picker for the fixed emoji allow-list.
+ */
+function ReactionBar({
+  commentId,
+  reactions,
+  disabled,
+  onToggle,
+}: {
+  commentId: string;
+  reactions: CommentReactionGql[];
+  disabled?: boolean;
+  onToggle: (id: string, emoji: string) => Promise<void>;
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [busyEmoji, setBusyEmoji] = useState<string | null>(null);
+  const mine = new Set(reactions.filter((reaction) => reaction.mine).map((r) => r.emoji));
+
+  const toggle = useCallback(
+    async (emoji: string) => {
+      if (disabled) {
+        return;
+      }
+      setBusyEmoji(emoji);
+      try {
+        await onToggle(commentId, emoji);
+      } finally {
+        setBusyEmoji(null);
+      }
+    },
+    [commentId, disabled, onToggle],
+  );
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-1">
+        {reactions.map((reaction) => (
+          <button
+            key={reaction.emoji}
+            type="button"
+            disabled={disabled || busyEmoji === reaction.emoji}
+            onClick={() => void toggle(reaction.emoji)}
+            aria-pressed={reaction.mine}
+            aria-label={`${reaction.emoji} reaction, ${reaction.count} ${
+              reaction.count === 1 ? "person" : "people"
+            }${reaction.mine ? " (including you)" : ""}`}
+            title={reaction.mine ? "Remove your reaction" : "React with this emoji"}
+            style={{ animation: "chip-pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.4) both" }}
+            className={cn(
+              "inline-flex h-6 items-center gap-1 rounded-full border px-2 text-[11px] tabular-nums transition-all",
+              reaction.mine
+                ? "border-violet-300 bg-violet-100 text-violet-800 hover:border-violet-400 hover:bg-violet-200 dark:border-violet-700 dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-900"
+                : "border-border/70 bg-muted/40 text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground",
+              busyEmoji === reaction.emoji && "animate-pulse opacity-60",
+            )}
+          >
+            <span aria-hidden>{reaction.emoji}</span>
+            <span>{reaction.count}</span>
+          </button>
+        ))}
+        {!pickerOpen ? (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => setPickerOpen(true)}
+            aria-label="Add a reaction"
+            title="Add a reaction"
+            className="inline-flex h-6 items-center gap-1 rounded-full border border-dashed border-border/80 px-2 text-[11px] text-muted-foreground transition-all hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700 disabled:pointer-events-none disabled:opacity-50 dark:hover:border-violet-700 dark:hover:bg-violet-950/60 dark:hover:text-violet-300"
+          >
+            <SmilePlus className="h-3 w-3" aria-hidden />
+            React
+          </button>
+        ) : null}
+      </div>
+
+      {pickerOpen ? (
+        <fieldset
+          aria-label="Pick a reaction"
+          style={{ animation: "picker-fade 0.18s ease-out both" }}
+          className="flex items-center gap-1 rounded-lg border border-border/70 bg-muted/30 p-1"
+        >
+          {REACTION_EMOJIS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              disabled={disabled || busyEmoji === emoji}
+              onClick={() => {
+                void toggle(emoji);
+                setPickerOpen(false);
+              }}
+              aria-pressed={mine.has(emoji)}
+              aria-label={`React with ${emoji}`}
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-md text-sm transition-all hover:scale-110 hover:bg-background hover:shadow-sm disabled:pointer-events-none disabled:opacity-50",
+                mine.has(emoji) &&
+                  "bg-violet-100 ring-1 ring-violet-300 dark:bg-violet-950/70 dark:ring-violet-700",
+              )}
+            >
+              <span aria-hidden>{emoji}</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setPickerOpen(false)}
+            aria-label="Close reaction picker"
+            className="ml-0.5 flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-3 w-3" aria-hidden />
+          </button>
+        </fieldset>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Comment mutations are hoisted into the tab and passed down so every card
 // in every thread shares one Apollo mutation instance.
 // ---------------------------------------------------------------------------
@@ -94,6 +222,7 @@ interface ThreadActions {
   onDelete: (id: string) => Promise<void>;
   onReply: (parentId: string, body: string) => Promise<void>;
   onLocate: (comment: CommentGql) => void;
+  onToggleReaction: (id: string, emoji: string) => Promise<void>;
 }
 
 /** Which thread actions the current viewer may perform. */
@@ -102,6 +231,8 @@ export interface ThreadCapabilities {
   resolve: boolean;
   remove: boolean;
   reply: boolean;
+  /** False hides the reaction bar entirely (read-only viewers). */
+  react: boolean;
 }
 
 /** One comment card — root comments carry pins + resolve, replies stay lean. */
@@ -212,6 +343,14 @@ function CommentCard({
             <Crosshair className="h-3.5 w-3.5" aria-hidden />
           </Button>
         </div>
+      ) : null}
+
+      {capabilities.react ? (
+        <ReactionBar
+          commentId={comment.id}
+          reactions={comment.reactions ?? []}
+          onToggle={actions.onToggleReaction}
+        />
       ) : null}
 
       <div className="flex items-center gap-1 self-end">
@@ -468,10 +607,10 @@ export function CommentThread({
 type CommentFilter = "all" | "open" | "resolved";
 
 /** Owner-level capabilities: full moderation of threads. */
-const OWNER_CAPABILITIES = { edit: true, resolve: true, remove: true, reply: true };
+const OWNER_CAPABILITIES = { edit: true, resolve: true, remove: true, reply: true, react: true };
 
-/** Guests on shared links: they may reply but not moderate. */
-const GUEST_CAPABILITIES = { edit: false, resolve: false, remove: false, reply: true };
+/** Guests on shared links: they may reply and react but not moderate. */
+const GUEST_CAPABILITIES = { edit: false, resolve: false, remove: false, reply: true, react: true };
 
 export { GUEST_CAPABILITIES };
 
@@ -504,6 +643,10 @@ export function CommentsTab({ fileId }: { fileId: string | null }) {
   );
   const [deleteComment] = useMutation<{ deleteComment: boolean }, CommentMutationVariables>(
     DELETE_COMMENT_MUTATION,
+    { refetchQueries: refetchFor(fileId) },
+  );
+  const [toggleReaction] = useMutation<ToggleReactionMutationData, ToggleReactionMutationVariables>(
+    TOGGLE_COMMENT_REACTION_MUTATION,
     { refetchQueries: refetchFor(fileId) },
   );
 
@@ -575,8 +718,20 @@ export function CommentsTab({ fileId }: { fileId: string | null }) {
         }
         centerCanvasOn(excalidrawApi, comment.x, comment.y, viewport.zoom);
       },
+      onToggleReaction: async (id, emoji) => {
+        await toggleReaction({ variables: { id, emoji } });
+      },
     }),
-    [addComment, deleteComment, excalidrawApi, fileId, resolveComment, updateComment, viewport],
+    [
+      addComment,
+      deleteComment,
+      excalidrawApi,
+      fileId,
+      resolveComment,
+      toggleReaction,
+      updateComment,
+      viewport,
+    ],
   );
 
   if (!fileId) {

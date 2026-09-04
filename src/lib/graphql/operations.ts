@@ -32,6 +32,12 @@ interface CommentAuthorGql {
   isGuest?: boolean;
 }
 
+export interface CommentReactionGql {
+  emoji: string;
+  count: number;
+  mine: boolean;
+}
+
 export interface CommentGql {
   id: string;
   fileId: string;
@@ -43,6 +49,7 @@ export interface CommentGql {
   createdAt: string;
   updatedAt: string;
   author: CommentAuthorGql | null;
+  reactions: CommentReactionGql[];
 }
 
 export interface SceneDataInput {
@@ -120,6 +127,11 @@ export const COMMENTS_QUERY = gql`
         id
         name
         isGuest
+      }
+      reactions {
+        emoji
+        count
+        mine
       }
     }
   }
@@ -271,6 +283,11 @@ const COMMENT_FIELDS = `
     name
     isGuest
   }
+  reactions {
+    emoji
+    count
+    mine
+  }
 `;
 
 export const ADD_COMMENT_MUTATION = gql`
@@ -317,6 +334,27 @@ export interface CommentMutationVariables {
   x?: number | null;
   y?: number | null;
   resolved?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Comment reactions
+// ---------------------------------------------------------------------------
+
+export const TOGGLE_COMMENT_REACTION_MUTATION = gql`
+  mutation ToggleCommentReaction($id: ID!, $emoji: String!) {
+    toggleCommentReaction(id: $id, emoji: $emoji) {
+      ${COMMENT_FIELDS}
+    }
+  }
+`;
+
+export interface ToggleReactionMutationData {
+  toggleCommentReaction: CommentGql;
+}
+
+export interface ToggleReactionMutationVariables {
+  id: string;
+  emoji: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -393,8 +431,8 @@ export interface SharedSceneQueryVariables {
 }
 
 export const SHARED_COMMENTS_QUERY = gql`
-  query SharedComments($token: String!) {
-    sharedComments(token: $token) {
+  query SharedComments($token: String!, $viewerGuestName: String) {
+    sharedComments(token: $token, viewerGuestName: $viewerGuestName) {
       ${COMMENT_FIELDS}
     }
   }
@@ -406,6 +444,31 @@ export interface SharedCommentsQueryData {
 
 export interface SharedCommentsQueryVariables {
   token: string;
+  viewerGuestName?: string;
+}
+
+export const TOGGLE_GUEST_REACTION_MUTATION = gql`
+  mutation ToggleGuestCommentReaction(
+    $token: String!
+    $guestName: String!
+    $id: ID!
+    $emoji: String!
+  ) {
+    toggleGuestCommentReaction(token: $token, guestName: $guestName, id: $id, emoji: $emoji) {
+      ${COMMENT_FIELDS}
+    }
+  }
+`;
+
+export interface ToggleGuestReactionMutationData {
+  toggleGuestCommentReaction: CommentGql;
+}
+
+export interface ToggleGuestReactionMutationVariables {
+  token: string;
+  guestName: string;
+  id: string;
+  emoji: string;
 }
 
 export const ADD_GUEST_COMMENT_MUTATION = gql`
@@ -487,4 +550,29 @@ export interface GenerateDiagramMutationData {
 
 export interface GenerateDiagramMutationVariables {
   prompt: string;
+}
+
+// ---------------------------------------------------------------------------
+// AI improve-selection
+// ---------------------------------------------------------------------------
+
+export const IMPROVE_DIAGRAM_MUTATION = gql`
+  mutation ImproveDiagram($prompt: String!, $elements: [JSON!]!) {
+    improveDiagram(prompt: $prompt, elements: $elements) {
+      elements
+      elementCount
+    }
+  }
+`;
+
+export interface ImproveDiagramMutationData {
+  improveDiagram?: {
+    elements: Record<string, unknown>[];
+    elementCount: number;
+  };
+}
+
+export interface ImproveDiagramMutationVariables {
+  prompt: string;
+  elements: Record<string, unknown>[];
 }

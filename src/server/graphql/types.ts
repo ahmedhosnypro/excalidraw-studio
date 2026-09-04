@@ -63,6 +63,26 @@ interface CommentAuthorOutput {
 
 export type { CommentAuthorOutput };
 
+/** One emoji reaction aggregate on a comment (per viewer `mine` flag). */
+const CommentReactionType: GraphQLObjectType = new GraphQLObjectType({
+  name: "CommentReaction",
+  description: "Emoji reactions aggregated per emoji on a comment.",
+  fields: {
+    emoji: { type: GraphQLString },
+    count: { type: GraphQLInt },
+    mine: {
+      type: GraphQLBoolean,
+      description: "True when the requesting viewer added this emoji.",
+    },
+  },
+});
+
+export interface CommentReactionOutput {
+  emoji: string;
+  count: number;
+  mine: boolean;
+}
+
 /** Full comment shape returned by `comments(fileId)` and its mutations. */
 export const CommentType: GraphQLObjectType = new GraphQLObjectType({
   name: "Comment",
@@ -81,6 +101,10 @@ export const CommentType: GraphQLObjectType = new GraphQLObjectType({
     createdAt: { type: GraphQLString },
     updatedAt: { type: GraphQLString },
     author: { type: CommentAuthorType },
+    reactions: {
+      type: new GraphQLList(new GraphQLNonNull(CommentReactionType)),
+      description: "Emoji reactions on this comment, aggregated per emoji.",
+    },
   },
 });
 
@@ -95,11 +119,13 @@ export interface CommentOutput {
   createdAt: string;
   updatedAt: string;
   author: CommentAuthorOutput | null;
+  reactions: CommentReactionOutput[];
 }
 
 export function toCommentOutput(
   row: CommentRow,
   author: CommentAuthorOutput | null,
+  reactions: CommentReactionOutput[] = [],
 ): CommentOutput {
   return {
     id: row.id,
@@ -112,6 +138,7 @@ export function toCommentOutput(
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     author,
+    reactions,
   };
 }
 

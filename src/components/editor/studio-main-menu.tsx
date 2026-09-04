@@ -7,6 +7,7 @@ import {
   FilePlus2,
   FolderOpen,
   HardDriveDownload,
+  LayoutTemplate,
   Link2,
   LogIn,
   LogOut,
@@ -176,6 +177,7 @@ export function StudioMainMenu({ isAuthenticated }: { isAuthenticated: boolean }
 
 export function StudioWelcomeScreen({ isAuthenticated }: { isAuthenticated: boolean }) {
   const openDialog = useEditorStore((state) => state.openDialog);
+  const openFilesDialog = useEditorStore((state) => state.openFilesDialog);
   const openAuthDialog = useEditorStore((state) => state.openAuthDialog);
 
   return (
@@ -208,6 +210,14 @@ export function StudioWelcomeScreen({ isAuthenticated }: { isAuthenticated: bool
               Sign in
             </WelcomeScreen.Center.MenuItem>
           )}
+          {isAuthenticated ? (
+            <WelcomeScreen.Center.MenuItem
+              icon={<LayoutTemplate className="h-4 w-4" />}
+              onSelect={() => openFilesDialog("templates")}
+            >
+              Start from a template
+            </WelcomeScreen.Center.MenuItem>
+          ) : null}
           <WelcomeScreen.Center.MenuItem
             shortcut="Ctrl+M"
             icon={<Sparkles className="h-4 w-4" />}

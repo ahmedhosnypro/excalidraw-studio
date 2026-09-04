@@ -62,6 +62,11 @@ interface EditorState {
   openDialog: (dialog: Exclude<DialogName, null>) => void;
   closeDialog: () => void;
 
+  /** Which view the files dialog opens in (file list vs template gallery). */
+  filesDialogView: "files" | "templates";
+  openFilesDialog: (view?: "files" | "templates") => void;
+  setFilesDialogView: (view: "files" | "templates") => void;
+
   /**
    * Target file of the share dialog (null = the currently open file). Lets
    * the files dialog share a non-active file directly from its row.
@@ -150,7 +155,12 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   dialog: null,
   openDialog: (dialog) => set({ dialog }),
-  closeDialog: () => set({ dialog: null, authIntent: null, shareFileId: null }),
+  closeDialog: () =>
+    set({ dialog: null, authIntent: null, shareFileId: null, filesDialogView: "files" }),
+
+  filesDialogView: "files",
+  openFilesDialog: (view) => set({ dialog: "files", filesDialogView: view ?? "files" }),
+  setFilesDialogView: (view) => set({ filesDialogView: view }),
 
   shareFileId: null,
   openShareDialog: (fileId) => set({ dialog: "share", shareFileId: fileId ?? null }),
