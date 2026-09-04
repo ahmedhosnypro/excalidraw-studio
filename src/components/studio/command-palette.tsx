@@ -1,6 +1,7 @@
 "use client";
 
 import { serializeAsJSON } from "@excalidraw/excalidraw";
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFiles, ToolType } from "@excalidraw/excalidraw/types";
 import {
   ArrowUpRight,
@@ -19,6 +20,7 @@ import {
   History,
   Image as ImageIcon,
   LayoutTemplate,
+  Library,
   Link2,
   LogIn,
   LogOut,
@@ -59,9 +61,62 @@ import {
 import { useStudioMutations } from "@/hooks/use-studio-mutations";
 import { useToast } from "@/hooks/use-toast";
 import type { FileGql, UserGql } from "@/lib/graphql/operations";
+import { markSyncToastSuppressed } from "@/lib/library-sync";
 import { printSlides } from "@/lib/print-slides";
 import { buildSlides } from "@/lib/slides";
 import { type PresentationSlide, useEditorStore } from "@/store/editor-store";
+
+type ToastInvoker = (input: { title: string; description: string }) => void;
+
+/** Selected canvas elements, or null after warning when nothing is selected. */
+function selectedElementsOrWarn(toast: ToastInvoker): readonly ExcalidrawElement[] | null {
+  const api = useEditorStore.getState().excalidrawApi;
+  const selectedIds = api?.getAppState().selectedElementIds ?? {};
+  const elements = (api?.getSceneElements() ?? []).filter((element) => selectedIds[element.id]);
+  if (elements.length === 0) {
+    toast({
+      title: "Nothing selected",
+      description: "Select one or more elements on the canvas, then run this command.",
+    });
+    return null;
+  }
+  return elements;
+}
+
+/** Adds the given elements to the personal library (account-synced). */
+function addElementsToLibrary(elements: readonly ExcalidrawElement[], userId: string | null): void {
+  const api = useEditorStore.getState().excalidrawApi;
+  if (!api) {
+    return;
+  }
+  // Only the account path re-toasts from the sync hook — suppress that echo.
+  if (userId) {
+    markSyncToastSuppressed();
+  }
+  void api.updateLibrary({
+    libraryItems: [
+      {
+        id: crypto.randomUUID(),
+        status: "unpublished",
+        created: Date.now(),
+        name: `${elements.length} element${elements.length === 1 ? "" : "s"}`,
+        elements: [...elements],
+      },
+    ],
+    merge: true,
+    openLibraryMenu: false,
+  });
+}
+
+/** Feedback shown after a selection is added to the personal library. */
+function libraryAddToast(toast: ToastInvoker, userId: string | null): void {
+  toast({
+    title: "Added to library",
+    description: userId
+      ? "Syncing to your account…"
+      : "Saved in this browser — sign in to sync it to your account.",
+  });
+}
 
 /** Builds slides from the live scene (shared by the present/print commands). */
 function liveSceneSlides(): { slides: PresentationSlide[]; files: BinaryFiles } | null {
@@ -203,6 +258,23 @@ export function CommandPalette({
   }, [logout]);
 
   const appCommands = useMemo<PaletteCommand[]>(() => {
+    // Shared between the signed-in and guest command sets (identity-driven
+    // feedback only — the command itself behaves the same either way).
+    const addToLibraryCommand: PaletteCommand = {
+      id: "add-to-library",
+      label: "Add selection to library",
+      icon: <Library />,
+      keywords: "library save selection assets reuse stamp sync account",
+      perform: () => {
+        const elements = selectedElementsOrWarn(toast);
+        if (!elements) {
+          return;
+        }
+        const identity = user?.id ?? null;
+        addElementsToLibrary(elements, identity);
+        libraryAddToast(toast, identity);
+      },
+    };
     const commands: PaletteCommand[] = [
       {
         id: "theme",
@@ -301,15 +373,7 @@ export function CommandPalette({
           icon: <Wand2 />,
           keywords: "ai improve edit selection revise rearrange magic wand rework",
           perform: () => {
-            const api = useEditorStore.getState().excalidrawApi;
-            const selected = Object.values(api?.getAppState().selectedElementIds ?? {}).some(
-              Boolean,
-            );
-            if (!selected) {
-              toast({
-                title: "Nothing selected",
-                description: "Select one or more elements on the canvas, then run this command.",
-              });
+            if (!selectedElementsOrWarn(toast)) {
               return;
             }
             useEditorStore.getState().openDialog("ai");
@@ -322,6 +386,7 @@ export function CommandPalette({
           keywords: "logout account sign out",
           perform: () => void handleSignOut(),
         },
+        addToLibraryCommand,
       );
     } else {
       commands.push(
@@ -334,6 +399,7 @@ export function CommandPalette({
           perform: () =>
             useEditorStore.getState().openAuthDialog("Sign in to generate diagrams with AI."),
         },
+        addToLibraryCommand,
         {
           id: "signin",
           label: "Sign in",

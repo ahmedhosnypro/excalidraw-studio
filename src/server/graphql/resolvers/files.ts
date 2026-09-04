@@ -7,6 +7,7 @@ import { gqlError } from "@/server/graphql/errors";
 import { autoSnapshotOnSave, snapshotKeysOf } from "@/server/graphql/resolvers/history";
 import type { FileOutput, StorageUsageOutput } from "@/server/graphql/types";
 import { toFileOutput } from "@/server/graphql/types";
+import { libraryKeyOf } from "@/server/library";
 import {
   copyScene,
   emptyScene,
@@ -144,6 +145,11 @@ export async function storageUsageOf(userId: string): Promise<StorageUsageOutput
   // so the indicator reflects real disk usage.
   for (const key of await snapshotKeysOf(userId)) {
     bytes += (await storage.size(key)) ?? 0;
+  }
+  // The personal library blob counts towards usage as well.
+  const libraryKey = await libraryKeyOf(userId);
+  if (libraryKey) {
+    bytes += (await storage.size(libraryKey)) ?? 0;
   }
   return { bytes, fileCount: rows.length };
 }

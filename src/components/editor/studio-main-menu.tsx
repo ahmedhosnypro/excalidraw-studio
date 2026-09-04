@@ -9,6 +9,7 @@ import {
   HardDriveDownload,
   History as HistoryIcon,
   LayoutTemplate,
+  Library,
   Link2,
   LogIn,
   LogOut,
@@ -116,6 +117,19 @@ export function StudioMainMenu({ isAuthenticated }: { isAuthenticated: boolean }
         ) : null}
         <MainMenu.Item icon={<HardDriveDownload className="h-4 w-4" />} onSelect={openFromDisk}>
           Open from disk…
+        </MainMenu.Item>
+        <MainMenu.Item
+          icon={<Library className="h-4 w-4" />}
+          onSelect={() => {
+            useEditorStore
+              .getState()
+              .excalidrawApi?.toggleSidebar({ name: "default", tab: "library" });
+          }}
+        >
+          Personal library
+          <MainMenu.Item.Badge type={isAuthenticated ? "green" : undefined}>
+            {isAuthenticated ? "Synced" : "Local"}
+          </MainMenu.Item.Badge>
         </MainMenu.Item>
         {isAuthenticated ? (
           <MainMenu.Item
@@ -229,6 +243,16 @@ export function StudioWelcomeScreen({ isAuthenticated }: { isAuthenticated: bool
               Start from a template
             </WelcomeScreen.Center.MenuItem>
           ) : null}
+          <WelcomeScreen.Center.MenuItem
+            icon={<Library className="h-4 w-4" />}
+            onSelect={() => {
+              useEditorStore
+                .getState()
+                .excalidrawApi?.toggleSidebar({ name: "default", tab: "library" });
+            }}
+          >
+            Browse personal library
+          </WelcomeScreen.Center.MenuItem>
           <WelcomeScreen.Center.MenuItem
             shortcut="Ctrl+M"
             icon={<Sparkles className="h-4 w-4" />}

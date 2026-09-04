@@ -18,6 +18,7 @@ import { useEditorStore } from "@/store/editor-store";
 import { StudioMainMenu, StudioWelcomeScreen } from "./studio-main-menu";
 import { StudioTopRight } from "./studio-top-right";
 import { useAutosave } from "./use-autosave";
+import { useLibrarySync } from "./use-library-sync";
 import { useOwnerRealtime } from "./use-owner-realtime";
 
 export interface ExcalidrawCanvasProps {
@@ -29,6 +30,8 @@ export function ExcalidrawCanvas({ user }: ExcalidrawCanvasProps) {
   const { onSceneChange } = useAutosave(Boolean(user));
   const setExcalidrawApi = useEditorStore((state) => state.setExcalidrawApi);
   const activeFileId = useEditorStore((state) => state.activeFileId);
+  // Personal library: account sync when signed in, localStorage for guests.
+  const { onLibraryChange } = useLibrarySync(user?.id ?? null);
 
   // Realtime collaboration: live cursors + presence for the open file's
   // share link (owner side — no-op without an active link).
@@ -47,6 +50,8 @@ export function ExcalidrawCanvas({ user }: ExcalidrawCanvasProps) {
     }),
     [],
   );
+  // `initialData` is deliberately not passed — the personal library is
+  // loaded imperatively (mount + identity switches) in useLibrarySync.
 
   const handleApiReady = useCallback(
     (api: ExcalidrawImperativeAPI) => {
@@ -83,6 +88,7 @@ export function ExcalidrawCanvas({ user }: ExcalidrawCanvasProps) {
         theme={resolvedTheme === "dark" ? "dark" : "light"}
         renderTopRightUI={renderTopRight}
         UIOptions={uiOptions}
+        onLibraryChange={onLibraryChange}
       >
         <StudioMainMenu isAuthenticated={Boolean(user)} />
         <StudioWelcomeScreen isAuthenticated={Boolean(user)} />

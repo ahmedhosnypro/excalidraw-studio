@@ -993,7 +993,10 @@ export function FilesDialog({ onOpenFile }: { onOpenFile: (file: FileGql) => voi
                   </ScrollArea>
 
                   {usageData ? (
-                    <div className="flex items-center gap-2 border-t border-border/70 pt-2 text-[11px] text-muted-foreground">
+                    <div
+                      className="flex items-center gap-2 border-t border-border/70 pt-2 text-[11px] text-muted-foreground"
+                      title="Drawings, version-history snapshots and your personal library"
+                    >
                       <Database className="h-3.5 w-3.5 shrink-0" aria-hidden />
                       <span>
                         {usageData.storageUsage.fileCount}

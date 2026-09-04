@@ -664,3 +664,54 @@ export interface ImproveDiagramMutationVariables {
   prompt: string;
   elements: Record<string, unknown>[];
 }
+
+// ---------------------------------------------------------------------------
+// Personal library (account sync — excalidraw+ paid parity)
+// ---------------------------------------------------------------------------
+
+export interface LibraryItemGql {
+  id: string;
+  status: string;
+  created: string;
+  name: string | null;
+  elements: Record<string, unknown>[];
+}
+
+interface LibraryGql {
+  items: LibraryItemGql[];
+  updatedAt: string | null;
+}
+
+export const LIBRARY_QUERY = gql`
+  query Library {
+    library {
+      updatedAt
+      items {
+        id
+        status
+        created
+        name
+        elements
+      }
+    }
+  }
+`;
+
+export interface LibraryQueryData {
+  library: LibraryGql;
+}
+
+export const SAVE_LIBRARY_MUTATION = gql`
+  mutation SaveLibrary($items: [JSON!]!) {
+    saveLibrary(items: $items) {
+      updatedAt
+      items {
+        id
+        status
+        created
+        name
+        elements
+      }
+    }
+  }
+`;

@@ -122,6 +122,21 @@ export const sceneSnapshots = sqliteTable(
   (table) => [index("scene_snapshots_file_id_idx").on(table.fileId)],
 );
 
+/**
+ * A user's personal element library (excalidraw+ paid parity: items sync to
+ * the account instead of a single browser). One row per user — the whole item
+ * list lives in one storage blob, mirroring the client-side library shape.
+ */
+export const libraryItems = sqliteTable("library_items", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  storageKey: text("storage_key").notNull(),
+  itemCount: integer("item_count").notNull().default(0),
+  createdAt: createdAtColumn(),
+  updatedAt: updatedAtColumn(),
+});
+
 // ---------------------------------------------------------------------------
 // Relations (classic shape) — consumed by drizzle-graphql's buildSchema to
 // derive nested GraphQL types (FileSelectItem.user, .comments, …).
@@ -180,3 +195,4 @@ export type FileRow = typeof files.$inferSelect;
 export type CommentRow = typeof comments.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type SceneSnapshotRow = typeof sceneSnapshots.$inferSelect;
+export type LibraryItemsRow = typeof libraryItems.$inferSelect;

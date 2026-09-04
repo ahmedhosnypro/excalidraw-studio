@@ -45,6 +45,7 @@ import {
   readSceneSnapshot,
   restoreSceneSnapshot,
 } from "./resolvers/history";
+import { getLibrary, saveLibrary } from "./resolvers/library";
 import {
   addGuestComment,
   createShareLink,
@@ -58,6 +59,7 @@ import { GraphQLJSON } from "./scalars";
 import {
   CommentType,
   GenerateDiagramType,
+  LibraryType,
   type SceneDataOutput,
   SceneDataType,
   SceneSnapshotType,
@@ -550,6 +552,34 @@ const improveDiagramMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
 };
 
 // ---------------------------------------------------------------------------
+// Query/mutation fields (personal library — account sync)
+// ---------------------------------------------------------------------------
+
+const libraryQuery: GraphQLFieldConfig<unknown, ApolloContext> = {
+  type: new GraphQLNonNull(LibraryType),
+  description: "The viewer's personal element library (account-synced).",
+  resolve: (_source, _args, context) => {
+    assertAuthenticated(context.userId);
+    return getLibrary(context.userId);
+  },
+};
+
+const saveLibraryMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
+  type: new GraphQLNonNull(LibraryType),
+  description:
+    "Replaces the viewer's personal library with the submitted items (validated, 200 items / 2 MB caps).",
+  args: {
+    items: {
+      type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(GraphQLJSON))),
+    },
+  },
+  resolve: (_source, args, context) => {
+    assertAuthenticated(context.userId);
+    return saveLibrary(context.userId, args.items);
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Schema assembly
 // ---------------------------------------------------------------------------
 
@@ -563,6 +593,7 @@ export const schema = new GraphQLSchema({
       scene: sceneQuery,
       comments: commentsQuery,
       storageUsage: storageUsageQuery,
+      library: libraryQuery,
       sceneSnapshots: sceneSnapshotsQuery,
       sceneSnapshot: sceneSnapshotQuery,
       sharedFile: sharedFileQuery,
@@ -596,6 +627,7 @@ export const schema = new GraphQLSchema({
       deleteSceneSnapshot: deleteSceneSnapshotMutation,
       generateDiagram: generateDiagramMutation,
       improveDiagram: improveDiagramMutation,
+      saveLibrary: saveLibraryMutation,
     },
   }),
 });

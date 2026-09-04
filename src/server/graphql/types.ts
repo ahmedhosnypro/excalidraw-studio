@@ -259,3 +259,41 @@ export const GenerateDiagramType: GraphQLObjectType = new GraphQLObjectType({
     elementCount: { type: new GraphQLNonNull(GraphQLInt) },
   },
 });
+
+/** One personal library item (Excalidraw library v2 shape). */
+const LibraryItemType: GraphQLObjectType = new GraphQLObjectType({
+  name: "LibraryItem",
+  description: "One saved group of Excalidraw elements in the personal library.",
+  fields: {
+    id: { type: new GraphQLNonNull(GraphQLID) },
+    status: { type: new GraphQLNonNull(GraphQLString) },
+    created: { type: new GraphQLNonNull(GraphQLString) },
+    name: { type: GraphQLString },
+    elements: {
+      type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(GraphQLJSON))),
+    },
+  },
+});
+
+/** The viewer's whole personal library (account-synced). */
+export const LibraryType: GraphQLObjectType = new GraphQLObjectType({
+  name: "Library",
+  description: "The viewer's personal element library, synced to their account.",
+  fields: {
+    items: { type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(LibraryItemType))) },
+    updatedAt: { type: GraphQLString },
+  },
+});
+
+export interface LibraryItemOutput {
+  id: string;
+  status: string;
+  created: string;
+  name: string | null;
+  elements: unknown[];
+}
+
+export interface LibraryOutput {
+  items: LibraryItemOutput[];
+  updatedAt: string | null;
+}
