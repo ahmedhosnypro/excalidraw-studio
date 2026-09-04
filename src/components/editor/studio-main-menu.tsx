@@ -3,7 +3,7 @@
 import { loadFromBlob, MainMenu, WelcomeScreen } from "@excalidraw/excalidraw";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFileData } from "@excalidraw/excalidraw/types";
-import { FilePlus2, FolderOpen, HardDriveDownload, LogIn, LogOut, Save } from "lucide-react";
+import { FilePlus2, FolderOpen, HardDriveDownload, Link2, LogIn, LogOut, Save } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback } from "react";
 import { useStudioMutations } from "@/hooks/use-studio-mutations";
@@ -55,6 +55,7 @@ export function StudioMainMenu({ isAuthenticated }: { isAuthenticated: boolean }
   const openAuthDialog = useEditorStore((state) => state.openAuthDialog);
   const openFile = useEditorStore((state) => state.openFile);
   const flushSave = useEditorStore((state) => state.flushSave);
+  const activeFileId = useEditorStore((state) => state.activeFileId);
 
   const handleNewFile = useCallback(async () => {
     try {
@@ -117,6 +118,15 @@ export function StudioMainMenu({ isAuthenticated }: { isAuthenticated: boolean }
             Save to cloud…
           </MainMenu.Item>
         )}
+        {isAuthenticated && activeFileId ? (
+          <MainMenu.Item
+            icon={<Link2 className="h-4 w-4" />}
+            shortcut="Ctrl+E"
+            onSelect={() => openDialog("share")}
+          >
+            Share…
+          </MainMenu.Item>
+        ) : null}
         <MainMenu.DefaultItems.Export />
       </MainMenu.Group>
 

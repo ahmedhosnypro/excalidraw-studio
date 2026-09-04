@@ -4,7 +4,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { type FileRow, files } from "@/db/schema";
 import { gqlError } from "@/server/graphql/errors";
-import type { FileOutput } from "@/server/graphql/types";
+import type { FileOutput, StorageUsageOutput } from "@/server/graphql/types";
 import { toFileOutput } from "@/server/graphql/types";
 import {
   copyScene,
@@ -124,4 +124,17 @@ export async function migrateGuestScene(
 ): Promise<FileOutput> {
   const scene = validateSceneData(data);
   return createFile(userId, parseFileName(name ?? "My drawing"), scene);
+}
+
+/** Total bytes + file count of the user's stored scenes (storage indicator). */
+export async function storageUsageOf(userId: string): Promise<StorageUsageOutput> {
+  const rows = await db
+    .select({ storageKey: files.storageKey })
+    .from(files)
+    .where(eq(files.userId, userId));
+  let bytes = 0;
+  for (const row of rows) {
+    bytes += (await storage.size(row.storageKey)) ?? 0;
+  }
+  return { bytes, fileCount: rows.length };
 }

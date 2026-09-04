@@ -164,7 +164,10 @@ export function useAutosave(isAuthenticated: boolean): {
         clearTimeout(timerRef.current);
       }
       // serializeAsJSON returns the .excalidraw envelope; the mutation wants
-      // the inner {elements, appState, files} payload.
+      // the inner {elements, appState, files} payload. The live viewport
+      // (scroll/zoom) is injected explicitly — Excalidraw's storage config
+      // does not guarantee those keys survive serialization, but we restore
+      // the exact view on open, so they must ride along.
       const parsed = JSON.parse(json) as {
         elements: unknown[];
         appState: Record<string, unknown>;
@@ -174,7 +177,12 @@ export function useAutosave(isAuthenticated: boolean): {
         json,
         data: {
           elements: parsed.elements,
-          appState: parsed.appState,
+          appState: {
+            ...parsed.appState,
+            scrollX: appState.scrollX,
+            scrollY: appState.scrollY,
+            zoom: appState.zoom,
+          },
           files: parsed.files,
         },
       };

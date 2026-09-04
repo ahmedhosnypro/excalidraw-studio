@@ -34,9 +34,26 @@ import {
   renameFile,
   requireOwnedFile,
   saveScene,
+  storageUsageOf,
 } from "./resolvers/files";
+import {
+  addGuestComment,
+  createShareLink,
+  revokeShareLink,
+  sharedComments,
+  sharedFileSummary,
+  sharedScene,
+} from "./resolvers/share";
 import { GraphQLJSON } from "./scalars";
-import { CommentType, type SceneDataOutput, SceneDataType, toUserOutput, UserType } from "./types";
+import {
+  CommentType,
+  type SceneDataOutput,
+  SceneDataType,
+  SharedFileType,
+  StorageUsageType,
+  toUserOutput,
+  UserType,
+} from "./types";
 
 // ---------------------------------------------------------------------------
 // drizzle-graphql: generated entities (types, filters, queries).
@@ -142,6 +159,40 @@ const commentsQuery: GraphQLFieldConfig<unknown, ApolloContext> = {
   },
 };
 
+const storageUsageQuery: GraphQLFieldConfig<unknown, ApolloContext> = {
+  type: new GraphQLNonNull(StorageUsageType),
+  description: "Total storage used by the viewer's scene files.",
+  resolve: (_source, _args, context) => {
+    assertAuthenticated(context.userId);
+    return storageUsageOf(context.userId);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Query fields (public, share-token scoped — no authentication)
+// ---------------------------------------------------------------------------
+
+const sharedFileQuery: GraphQLFieldConfig<unknown, ApolloContext> = {
+  type: new GraphQLNonNull(SharedFileType),
+  description: "Public metadata of the file a share token points to.",
+  args: { token: { type: new GraphQLNonNull(GraphQLString) } },
+  resolve: (_source, args) => sharedFileSummary(args.token),
+};
+
+const sharedSceneQuery: GraphQLFieldConfig<unknown, ApolloContext> = {
+  type: new GraphQLNonNull(SceneDataType),
+  description: "Loads the (read-only) scene contents a share token grants access to.",
+  args: { token: { type: new GraphQLNonNull(GraphQLString) } },
+  resolve: (_source, args): Promise<SceneDataOutput> => sharedScene(args.token),
+};
+
+const sharedCommentsQuery: GraphQLFieldConfig<unknown, ApolloContext> = {
+  type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(CommentType))),
+  description: "Lists comments of a shared file (oldest first).",
+  args: { token: { type: new GraphQLNonNull(GraphQLString) } },
+  resolve: (_source, args) => sharedComments(args.token),
+};
+
 // ---------------------------------------------------------------------------
 // Mutation fields (files)
 // ---------------------------------------------------------------------------
@@ -232,6 +283,57 @@ const deleteFileMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
 };
 
 // ---------------------------------------------------------------------------
+// Mutation fields (share links)
+// ---------------------------------------------------------------------------
+
+const createShareLinkMutation = fileMutationConfig(
+  "Create (or return) the share link token for a file you own.",
+  { fileId: { type: new GraphQLNonNull(GraphQLID) } },
+  (_source, args, context) => {
+    assertAuthenticated(context.userId);
+    return createShareLink(context.userId, String(args.fileId));
+  },
+);
+
+const revokeShareLinkMutation = fileMutationConfig(
+  "Revoke the share link of a file you own — the token stops working immediately.",
+  { fileId: { type: new GraphQLNonNull(GraphQLID) } },
+  (_source, args, context) => {
+    assertAuthenticated(context.userId);
+    return revokeShareLink(context.userId, String(args.fileId));
+  },
+);
+
+const addGuestCommentMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
+  type: new GraphQLNonNull(CommentType),
+  description:
+    "Post a comment on a shared file as a named guest (no account). Pass parentId to reply within a thread.",
+  args: {
+    token: { type: new GraphQLNonNull(GraphQLString) },
+    guestName: { type: new GraphQLNonNull(GraphQLString) },
+    body: { type: new GraphQLNonNull(GraphQLString) },
+    parentId: { type: GraphQLID },
+    x: { type: GraphQLFloat },
+    y: { type: GraphQLFloat },
+  },
+  resolve: (_source, args, context) => {
+    const ip =
+      context.requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      context.requestHeaders.get("x-real-ip") ??
+      "local";
+    return addGuestComment(
+      args.token,
+      args.guestName,
+      args.body,
+      args.x,
+      args.y,
+      args.parentId,
+      ip,
+    );
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Mutation fields (comments)
 // ---------------------------------------------------------------------------
 
@@ -313,6 +415,10 @@ export const schema = new GraphQLSchema({
       filesSingle: scopeGeneratedQueryToViewer(generated.entities.queries.filesSingle),
       scene: sceneQuery,
       comments: commentsQuery,
+      storageUsage: storageUsageQuery,
+      sharedFile: sharedFileQuery,
+      sharedScene: sharedSceneQuery,
+      sharedComments: sharedCommentsQuery,
     },
   }),
   mutation: new GraphQLObjectType({
@@ -331,6 +437,9 @@ export const schema = new GraphQLSchema({
       updateComment: updateCommentMutation,
       resolveComment: resolveCommentMutation,
       deleteComment: deleteCommentMutation,
+      createShareLink: createShareLinkMutation,
+      revokeShareLink: revokeShareLinkMutation,
+      addGuestComment: addGuestCommentMutation,
     },
   }),
 });

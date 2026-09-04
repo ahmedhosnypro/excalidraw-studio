@@ -17,6 +17,7 @@ import {
   Grid3x3,
   Hand,
   Image as ImageIcon,
+  Link2,
   LogIn,
   LogOut,
   MapPin,
@@ -244,6 +245,14 @@ export function CommandPalette({
           shortcut: "Ctrl+S",
           keywords: "save cloud sync persist",
           perform: () => void useEditorStore.getState().flushSave?.(),
+        },
+        {
+          id: "share",
+          label: "Share this drawing…",
+          icon: <Link2 />,
+          shortcut: "Ctrl+E",
+          keywords: "share link public view guests invite collaborate",
+          perform: () => useEditorStore.getState().openDialog("share"),
         },
         {
           id: "signout",

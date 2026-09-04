@@ -20,6 +20,8 @@ export const users = sqliteTable("users", {
   email: text("email").notNull().unique(),
   name: text("name").notNull(),
   passwordHash: text("password_hash").notNull(),
+  /** Guest identities created for shared-link commenters (never sign in). */
+  isGuest: integer("is_guest", { mode: "boolean" }).notNull().default(false),
   createdAt: createdAtColumn(),
   updatedAt: updatedAtColumn(),
 });
@@ -47,6 +49,8 @@ export const files = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     storageKey: text("storage_key").notNull(),
+    /** Secret share-link token (null = sharing disabled for this file). */
+    shareToken: text("share_token").unique(),
     createdAt: createdAtColumn(),
     updatedAt: updatedAtColumn(),
   },

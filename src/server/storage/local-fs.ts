@@ -70,4 +70,18 @@ export class LocalFileSystemStorage implements StorageAdapter {
       throw new StorageError(`Failed to stat object "${key}": ${String(error)}`, "READ_FAILED");
     }
   }
+
+  async size(key: string): Promise<number | null> {
+    const path = this.path(key);
+    try {
+      const info = await stat(path);
+      return info.isFile() ? info.size : null;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") {
+        return null;
+      }
+      throw new StorageError(`Failed to stat object "${key}": ${String(error)}`, "READ_FAILED");
+    }
+  }
 }

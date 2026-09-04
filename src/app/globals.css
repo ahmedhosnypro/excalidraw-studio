@@ -115,20 +115,21 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-muted-foreground) transparent;
   }
   body {
     @apply bg-background text-foreground;
   }
-}
-
-/* ---------------------------------------------------------------------------
- * Custom slim scrollbars for long lists (files dialog, comments, sidebar).
- * ------------------------------------------------------------------------- */
-@layer base {
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: var(--color-muted-foreground) transparent;
+  /* Softer text selection that respects the theme. */
+  ::selection {
+    background-color: color-mix(in oklab, var(--color-primary) 18%, transparent);
   }
+  .dark ::selection {
+    background-color: color-mix(in oklab, var(--color-primary) 32%, transparent);
+  }
+
+  /* Slim scrollbars for long lists (files dialog, comments, sidebar). */
   *::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -145,5 +146,20 @@
   }
   *::-webkit-scrollbar-corner {
     background: transparent;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Reduced motion: unlayered so it outranks Tailwind's layered utilities
+ * (same trick `!important` would pull, without biome's noImportantStyles).
+ * ------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+    scroll-behavior: auto;
   }
 }

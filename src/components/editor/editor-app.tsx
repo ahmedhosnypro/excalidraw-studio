@@ -4,11 +4,13 @@ import { useLazyQuery, useQuery } from "@apollo/client/react";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 
 import type { AppState } from "@excalidraw/excalidraw/types";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AuthDialog } from "@/components/auth/auth-dialog";
 import { CommandPalette } from "@/components/studio/command-palette";
 import { FilesDialog } from "@/components/studio/files-dialog";
 import { PresentationMode } from "@/components/studio/presentation-mode";
+import { ShareDialog } from "@/components/studio/share-dialog";
+import { SharedViewer } from "@/components/studio/shared-viewer";
 import type {
   FileGql,
   FilesQueryData,
@@ -42,6 +44,13 @@ async function applyScene(
 }
 
 export function EditorApp() {
+  // Share-link viewer mode: `/?share=<token>` renders the read-only shared
+  // scene instead of the editor workspace (client-only — this component tree
+  // is dynamically imported with ssr disabled).
+  const [shareToken] = useState(() =>
+    typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("share"),
+  );
+
   const { data: meData, loading: meLoading } = useQuery<MeQueryData>(ME_QUERY);
   const user = meData?.me ?? null;
   const { data: filesData, loading: filesLoading } = useQuery<FilesQueryData>(FILES_QUERY, {
@@ -55,6 +64,10 @@ export function EditorApp() {
   });
 
   const bootstrappedRef = useRef(false);
+  // Identity the current bootstrap belongs to. When the user signs in or out
+  // (guest ↔ account), the bootstrap must re-run so the freshly signed-in
+  // user's most recent file opens instead of staying on the guest scene.
+  const bootstrappedIdentityRef = useRef<string | null | undefined>(undefined);
   const openFileRef = useRef<(file: FileGql) => Promise<void>>(async () => undefined);
   const reopenFileId = useEditorStore((state) => state.reopenFileId);
 
@@ -72,9 +85,27 @@ export function EditorApp() {
       const scene = result.data?.scene;
       if (scene) {
         await applyScene(scene.elements, scene.appState, scene.files);
-        useEditorStore
-          .getState()
-          .excalidrawApi?.scrollToContent(undefined, { fitToViewport: true });
+        // Restore the saved viewport exactly when present; otherwise fall
+        // back to fitting the drawing into the view.
+        const saved = (scene.appState ?? {}) as Record<string, unknown>;
+        const zoomValue = (saved.zoom as { value?: number } | undefined)?.value;
+        const api = useEditorStore.getState().excalidrawApi;
+        if (
+          api &&
+          typeof saved.scrollX === "number" &&
+          typeof saved.scrollY === "number" &&
+          typeof zoomValue === "number"
+        ) {
+          api.updateScene({
+            appState: {
+              scrollX: saved.scrollX,
+              scrollY: saved.scrollY,
+              zoom: { value: zoomValue } as AppState["zoom"],
+            },
+          });
+        } else {
+          api?.scrollToContent(undefined, { fitToViewport: true });
+        }
       }
     } finally {
       useEditorStore.getState().setLoadingScene(false);
@@ -99,7 +130,15 @@ export function EditorApp() {
   // Initial bootstrap: open the most recent file (authed) or the guest scene.
   // For signed-in users we wait for the files query to settle — otherwise the
   // canvas can mount before the list arrives and the race would skip opening.
+  // Signing in/out re-runs the bootstrap for the new identity.
   useEffect(() => {
+    const identity = user?.id ?? null;
+    if (bootstrappedIdentityRef.current === undefined) {
+      bootstrappedIdentityRef.current = identity;
+    } else if (bootstrappedIdentityRef.current !== identity) {
+      bootstrappedIdentityRef.current = identity;
+      bootstrappedRef.current = false;
+    }
     if (meLoading || bootstrappedRef.current || !excalidrawApi) {
       return;
     }
@@ -133,6 +172,9 @@ export function EditorApp() {
 
   // Global hotkeys owned by the studio shell.
   useEffect(() => {
+    if (shareToken) {
+      return;
+    }
     const handler = (event: KeyboardEvent): void => {
       const mod = event.ctrlKey || event.metaKey;
 
@@ -153,6 +195,12 @@ export function EditorApp() {
         return;
       }
 
+      if (mod && event.key.toLowerCase() === "e" && !event.shiftKey) {
+        event.preventDefault();
+        useEditorStore.getState().openDialog("share");
+        return;
+      }
+
       // Open Excalidraw's built-in image export dialog (advertised as
       // "Export image…" in the command palette).
       if (mod && event.shiftKey && event.key.toLowerCase() === "e") {
@@ -164,13 +212,18 @@ export function EditorApp() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [user]);
+  }, [user, shareToken]);
+
+  if (shareToken) {
+    return <SharedViewer token={shareToken} />;
+  }
 
   return (
     <main className="h-dvh w-full">
       <ExcalidrawCanvas user={user} />
       <AuthDialog />
       <FilesDialog onOpenFile={(file) => void openFile(file)} />
+      <ShareDialog />
       <PresentationMode />
       <CommandPalette user={user} files={files} onOpenFile={(file) => void openFile(file)} />
     </main>

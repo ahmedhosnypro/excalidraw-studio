@@ -1,4 +1,11 @@
-import { GraphQLBoolean, GraphQLFloat, GraphQLID, GraphQLObjectType, GraphQLString } from "graphql";
+import {
+  GraphQLBoolean,
+  GraphQLFloat,
+  GraphQLID,
+  GraphQLInt,
+  GraphQLObjectType,
+  GraphQLString,
+} from "graphql";
 
 import type { CommentRow, FileRow, UserRow } from "@/db/schema";
 
@@ -39,13 +46,20 @@ const CommentAuthorType: GraphQLObjectType = new GraphQLObjectType({
   fields: {
     id: { type: GraphQLID },
     name: { type: GraphQLString },
+    isGuest: {
+      type: GraphQLBoolean,
+      description: "True when the author is a shared-link guest (no account).",
+    },
   },
 });
 
 interface CommentAuthorOutput {
   id: string;
   name: string;
+  isGuest: boolean;
 }
+
+export type { CommentAuthorOutput };
 
 /** Full comment shape returned by `comments(fileId)` and its mutations. */
 export const CommentType: GraphQLObjectType = new GraphQLObjectType({
@@ -83,7 +97,7 @@ export interface CommentOutput {
 
 export function toCommentOutput(
   row: CommentRow,
-  author: { id: string; name: string } | null,
+  author: CommentAuthorOutput | null,
 ): CommentOutput {
   return {
     id: row.id,
@@ -97,6 +111,33 @@ export function toCommentOutput(
     updatedAt: row.updatedAt.toISOString(),
     author,
   };
+}
+
+/** Metadata about a share-link target, visible to guests (no scene data). */
+export const SharedFileType: GraphQLObjectType = new GraphQLObjectType({
+  name: "SharedFile",
+  description: "Public metadata of a file a share token points to.",
+  fields: {
+    id: { type: GraphQLID },
+    name: { type: GraphQLString },
+    ownerName: { type: GraphQLString },
+    updatedAt: { type: GraphQLString },
+  },
+});
+
+/** Storage footprint of the viewer's scenes. */
+export const StorageUsageType: GraphQLObjectType = new GraphQLObjectType({
+  name: "StorageUsage",
+  description: "Total storage used by the viewer's scene files.",
+  fields: {
+    bytes: { type: GraphQLInt },
+    fileCount: { type: GraphQLInt },
+  },
+});
+
+export interface StorageUsageOutput {
+  bytes: number;
+  fileCount: number;
 }
 
 /**

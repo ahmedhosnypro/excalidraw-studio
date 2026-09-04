@@ -7,8 +7,10 @@ import type {
   CommentGql,
   CommentsQueryData,
   CommentsQueryVariables,
+  SharedCommentsQueryData,
+  SharedCommentsQueryVariables,
 } from "@/lib/graphql/operations";
-import { COMMENTS_QUERY } from "@/lib/graphql/operations";
+import { COMMENTS_QUERY, SHARED_COMMENTS_QUERY } from "@/lib/graphql/operations";
 import { cn } from "@/lib/utils";
 import { useEditorStore } from "@/store/editor-store";
 
@@ -19,38 +21,31 @@ import { useEditorStore } from "@/store/editor-store";
  *
  * Clicking a pin opens the comments sidebar tab and highlights the comment.
  */
-export function CommentPinsLayer({ fileId }: { fileId: string | null }) {
+function CommentPinMarkers({ comments }: { comments: CommentGql[] }) {
   const viewport = useEditorStore((state) => state.viewport);
   const highlightedCommentId = useEditorStore((state) => state.highlightedCommentId);
   const highlightComment = useEditorStore((state) => state.highlightComment);
   const excalidrawApi = useEditorStore((state) => state.excalidrawApi);
 
-  const { data } = useQuery<CommentsQueryData, CommentsQueryVariables>(COMMENTS_QUERY, {
-    variables: { fileId: fileId ?? "" },
-    skip: !fileId,
-    // Keep pins in sync after add/resolve/delete from the sidebar tab.
-    refetchWritePolicy: "merge",
-  });
-
   const pinnedComments = useMemo(
     () =>
-      (data?.comments ?? []).filter(
+      comments.filter(
         (comment): comment is CommentGql & { x: number; y: number } =>
           comment.x !== null && comment.y !== null,
       ),
-    [data?.comments],
+    [comments],
   );
 
   /** Replies per top-level comment — shown as a count badge on pins. */
   const replyCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const comment of data?.comments ?? []) {
+    for (const comment of comments) {
       if (comment.parentId !== null) {
         counts.set(comment.parentId, (counts.get(comment.parentId) ?? 0) + 1);
       }
     }
     return counts;
-  }, [data?.comments]);
+  }, [comments]);
 
   const handlePinClick = useCallback(
     (commentId: string) => {
@@ -64,7 +59,7 @@ export function CommentPinsLayer({ fileId }: { fileId: string | null }) {
     [excalidrawApi, highlightComment],
   );
 
-  if (!fileId || pinnedComments.length === 0) {
+  if (pinnedComments.length === 0) {
     return null;
   }
 
@@ -119,4 +114,32 @@ export function CommentPinsLayer({ fileId }: { fileId: string | null }) {
       })}
     </div>
   );
+}
+
+/**
+ * Owner variant: renders pins for the open file's comments (queries by file
+ * id, shares the Apollo cache with the comments sidebar tab).
+ */
+export function CommentPinsLayer({ fileId }: { fileId: string | null }) {
+  const { data } = useQuery<CommentsQueryData, CommentsQueryVariables>(COMMENTS_QUERY, {
+    variables: { fileId: fileId ?? "" },
+    skip: !fileId,
+    // Keep pins in sync after add/resolve/delete from the sidebar tab.
+    refetchWritePolicy: "merge",
+  });
+
+  return <CommentPinMarkers comments={data?.comments ?? []} />;
+}
+
+/**
+ * Guest variant: renders pins for a shared file's comments (queries by share
+ * token, shares the cache with the guest comments sidebar tab).
+ */
+export function SharedCommentPinsLayer({ token }: { token: string }) {
+  const { data } = useQuery<SharedCommentsQueryData, SharedCommentsQueryVariables>(
+    SHARED_COMMENTS_QUERY,
+    { variables: { token }, refetchWritePolicy: "merge" },
+  );
+
+  return <CommentPinMarkers comments={data?.sharedComments ?? []} />;
 }

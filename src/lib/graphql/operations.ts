@@ -15,6 +15,7 @@ export interface FileGql {
   id: string;
   userId?: string;
   name: string;
+  shareToken?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -28,6 +29,7 @@ interface SceneDataGql {
 interface CommentAuthorGql {
   id: string;
   name: string;
+  isGuest?: boolean;
 }
 
 export interface CommentGql {
@@ -73,6 +75,7 @@ export const FILES_QUERY = gql`
     files(orderBy: { updatedAt: { direction: desc, priority: 1 } }) {
       id
       name
+      shareToken
       createdAt
       updatedAt
     }
@@ -116,6 +119,7 @@ export const COMMENTS_QUERY = gql`
       author {
         id
         name
+        isGuest
       }
     }
   }
@@ -180,6 +184,7 @@ const FILE_FIELDS = `
   id
   userId
   name
+  shareToken
   createdAt
   updatedAt
 `;
@@ -264,6 +269,7 @@ const COMMENT_FIELDS = `
   author {
     id
     name
+    isGuest
   }
 `;
 
@@ -311,4 +317,150 @@ export interface CommentMutationVariables {
   x?: number | null;
   y?: number | null;
   resolved?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Share links + guest access (public, token-scoped)
+// ---------------------------------------------------------------------------
+
+export const CREATE_SHARE_LINK_MUTATION = gql`
+  mutation CreateShareLink($fileId: ID!) {
+    createShareLink(fileId: $fileId) {
+      ${FILE_FIELDS}
+    }
+  }
+`;
+
+export const REVOKE_SHARE_LINK_MUTATION = gql`
+  mutation RevokeShareLink($fileId: ID!) {
+    revokeShareLink(fileId: $fileId) {
+      ${FILE_FIELDS}
+    }
+  }
+`;
+
+export interface ShareLinkMutationData {
+  createShareLink?: FileGql;
+  revokeShareLink?: FileGql;
+}
+
+export interface ShareLinkMutationVariables {
+  fileId: string;
+}
+
+interface SharedFileGql {
+  id: string;
+  name: string;
+  ownerName: string;
+  updatedAt: string;
+}
+
+export const SHARED_FILE_QUERY = gql`
+  query SharedFile($token: String!) {
+    sharedFile(token: $token) {
+      id
+      name
+      ownerName
+      updatedAt
+    }
+  }
+`;
+
+export interface SharedFileQueryData {
+  sharedFile: SharedFileGql;
+}
+
+export interface SharedFileQueryVariables {
+  token: string;
+}
+
+export const SHARED_SCENE_QUERY = gql`
+  query SharedScene($token: String!) {
+    sharedScene(token: $token) {
+      elements
+      appState
+      files
+    }
+  }
+`;
+
+export interface SharedSceneQueryData {
+  sharedScene: SceneDataGql;
+}
+
+export interface SharedSceneQueryVariables {
+  token: string;
+}
+
+export const SHARED_COMMENTS_QUERY = gql`
+  query SharedComments($token: String!) {
+    sharedComments(token: $token) {
+      ${COMMENT_FIELDS}
+    }
+  }
+`;
+
+export interface SharedCommentsQueryData {
+  sharedComments: CommentGql[];
+}
+
+export interface SharedCommentsQueryVariables {
+  token: string;
+}
+
+export const ADD_GUEST_COMMENT_MUTATION = gql`
+  mutation AddGuestComment(
+    $token: String!
+    $guestName: String!
+    $body: String!
+    $parentId: ID
+    $x: Float
+    $y: Float
+  ) {
+    addGuestComment(
+      token: $token
+      guestName: $guestName
+      body: $body
+      parentId: $parentId
+      x: $x
+      y: $y
+    ) {
+      ${COMMENT_FIELDS}
+    }
+  }
+`;
+
+export interface GuestCommentMutationData {
+  addGuestComment: CommentGql;
+}
+
+export interface GuestCommentMutationVariables {
+  token: string;
+  guestName: string;
+  body: string;
+  parentId?: string | null;
+  x?: number | null;
+  y?: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// Storage usage
+// ---------------------------------------------------------------------------
+
+interface StorageUsageGql {
+  bytes: number;
+  fileCount: number;
+}
+
+export const STORAGE_USAGE_QUERY = gql`
+  query StorageUsage {
+    storageUsage {
+      bytes
+      fileCount
+    }
+  }
+`;
+
+export interface StorageUsageQueryData {
+  storageUsage: StorageUsageGql;
 }

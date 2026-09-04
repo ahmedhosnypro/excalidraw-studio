@@ -6,6 +6,8 @@ import {
   Cloud,
   CloudOff,
   FolderOpen,
+  Globe,
+  Link2,
   Loader2,
   LogIn,
   LogOut,
@@ -27,8 +29,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { CommentsQueryData, CommentsQueryVariables, UserGql } from "@/lib/graphql/operations";
-import { COMMENTS_QUERY, LOGOUT_MUTATION, ME_QUERY } from "@/lib/graphql/operations";
+import type {
+  CommentsQueryData,
+  CommentsQueryVariables,
+  FilesQueryData,
+  UserGql,
+} from "@/lib/graphql/operations";
+import { COMMENTS_QUERY, FILES_QUERY, LOGOUT_MUTATION, ME_QUERY } from "@/lib/graphql/operations";
 import { cn } from "@/lib/utils";
 import { useEditorStore } from "@/store/editor-store";
 
@@ -154,6 +161,12 @@ export function StudioTopRight({ user }: { user: UserGql | null }) {
   const openDialog = useEditorStore((state) => state.openDialog);
   const openAuthDialog = useEditorStore((state) => state.openAuthDialog);
 
+  // Active file row (from the files cache) — used for the shared indicator.
+  const { data: filesData } = useQuery<FilesQueryData>(FILES_QUERY, { skip: !user });
+  const activeFileShared = (filesData?.files ?? []).some(
+    (file) => file.id === activeFileId && Boolean(file.shareToken),
+  );
+
   // Shares the Apollo cache with the comments sidebar tab — powers the open
   // comment count badge on the top-right trigger.
   const { data: commentsData } = useQuery<CommentsQueryData, CommentsQueryVariables>(
@@ -190,6 +203,27 @@ export function StudioTopRight({ user }: { user: UserGql | null }) {
         <span className="max-w-[16ch] truncate rounded-md bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
           {activeFileName}
         </span>
+      ) : null}
+      {user && activeFileId ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "h-8 gap-1.5 px-2",
+            activeFileShared &&
+              "text-violet-700 hover:text-violet-800 dark:text-violet-300 dark:hover:text-violet-200",
+          )}
+          onClick={() => openDialog("share")}
+          aria-label={activeFileShared ? "Share settings (link active)" : "Share this drawing"}
+          title={activeFileShared ? "Sharing — a public link is active" : "Share this drawing"}
+        >
+          {activeFileShared ? (
+            <Globe className="h-4 w-4" aria-hidden />
+          ) : (
+            <Link2 className="h-4 w-4" aria-hidden />
+          )}
+          <span className="hidden lg:inline">Share</span>
+        </Button>
       ) : null}
       <SidebarTabButton tab="comments" label="Comments" badge={openCommentCount}>
         <MessageCircle className="h-4 w-4" aria-hidden />

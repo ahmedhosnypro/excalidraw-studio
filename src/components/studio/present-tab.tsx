@@ -1,6 +1,5 @@
 "use client";
 
-import { exportToSvg } from "@excalidraw/excalidraw";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 import {
@@ -14,71 +13,12 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SlideThumbnail } from "@/components/studio/slide-thumbnail";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { buildSlides, reorderFrame, setFrameNote } from "@/lib/slides";
-import { mountSvgPreview } from "@/lib/svg-preview";
 import { cn } from "@/lib/utils";
 import { type PresentationSlide, useEditorStore } from "@/store/editor-store";
-
-/** SVG preview of one slide, clipped to its frame. */
-function SlideThumbnail({
-  slide,
-  files,
-  darkMode,
-}: {
-  slide: PresentationSlide;
-  files: BinaryFiles;
-  darkMode: boolean;
-}) {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host || slide.elements.length === 0) {
-      return;
-    }
-    let cancelled = false;
-    void exportToSvg({
-      elements: slide.elements as never,
-      appState: {
-        exportBackground: false,
-        exportWithDarkMode: darkMode,
-        exportingFrame: slide.frame ?? null,
-      },
-      files,
-      exportPadding: 8,
-    })
-      .then((svg) => {
-        if (cancelled) {
-          return;
-        }
-        mountSvgPreview(svg, host);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setFailed(true);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [darkMode, files, slide.elements, slide.frame]);
-
-  return (
-    <div
-      className="flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-md border border-border/60 bg-muted/30"
-      aria-hidden
-    >
-      {slide.elements.length === 0 || failed ? (
-        <Frame className="h-5 w-5 text-muted-foreground/50" />
-      ) : (
-        <div ref={hostRef} className="h-full w-full" />
-      )}
-    </div>
-  );
-}
 
 /** One slide row: thumbnail, name, reorder buttons, and a notes editor. */
 function SlideRow({

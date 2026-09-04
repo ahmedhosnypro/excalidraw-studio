@@ -10,6 +10,7 @@ import "@excalidraw/excalidraw/index.css";
 import { CommentPinsLayer } from "@/components/studio/comment-pins-layer";
 import { PinPlacementOverlay } from "@/components/studio/pin-placement-overlay";
 import { StudioSidebar } from "@/components/studio/studio-sidebar";
+import { registerViewportTracking } from "@/lib/canvas-geometry";
 import type { UserGql } from "@/lib/graphql/operations";
 import { useEditorStore } from "@/store/editor-store";
 import { StudioMainMenu, StudioWelcomeScreen } from "./studio-main-menu";
@@ -53,17 +54,8 @@ export function ExcalidrawCanvas({ user }: ExcalidrawCanvasProps) {
       // there is nothing to load.
       store.setLoadingScene(true);
       setExcalidrawApi(api);
-      // Capture the initial viewport, then track pan/zoom so canvas overlays
-      // (comment pins) follow it.
-      const appState = api.getAppState();
-      useEditorStore.getState().setViewport({
-        scrollX: appState.scrollX ?? 0,
-        scrollY: appState.scrollY ?? 0,
-        zoom: appState.zoom.value,
-      });
-      api.onScrollChange((scrollX, scrollY, zoom) => {
-        useEditorStore.getState().setViewport({ scrollX, scrollY, zoom: zoom.value });
-      });
+      // Track pan/zoom so canvas overlays (comment pins) follow the viewport.
+      registerViewportTracking(api);
       if (store.activeFileId) {
         // Canvas remounted while a file is open (HMR, dynamic chunk reload):
         // re-apply that file's scene so the drawing reappears instead of the

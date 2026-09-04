@@ -1,7 +1,10 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, StickyNote, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import type { BinaryFiles } from "@excalidraw/excalidraw/types";
+import { ChevronLeft, ChevronRight, LayoutGrid, StickyNote, X } from "lucide-react";
+import { useTheme } from "next-themes";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SlideThumbnail } from "@/components/studio/slide-thumbnail";
 import { Button } from "@/components/ui/button";
 
 import { cn } from "@/lib/utils";
@@ -10,17 +13,23 @@ import { useEditorStore } from "@/store/editor-store";
 /**
  * Full-canvas presentation mode: hides the editing UI (zen + view mode) and
  * steps through slides. Arrow keys / space navigate, Escape exits, N toggles
- * the speaker notes bar.
+ * the speaker notes bar, G toggles the slide picker strip.
  */
 export function PresentationMode() {
   const presenting = useEditorStore((state) => state.presenting);
   const slides = useEditorStore((state) => state.presentationSlides);
   const stopPresentation = useEditorStore((state) => state.stopPresentation);
+  const excalidrawApi = useEditorStore((state) => state.excalidrawApi);
+  const { resolvedTheme } = useTheme();
   const [slideIndex, setSlideIndex] = useState(0);
   const [chromeVisible, setChromeVisible] = useState(true);
   const [notesVisible, setNotesVisible] = useState(false);
+  const [pickerVisible, setPickerVisible] = useState(true);
   const [wasPresenting, setWasPresenting] = useState(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeSlideRef = useRef<HTMLButtonElement | null>(null);
+
+  const files = useMemo<BinaryFiles>(() => excalidrawApi?.getFiles() ?? {}, [excalidrawApi]);
 
   // Reset the slide counter at the moment presentation turns on (render-time
   // state adjustment, per React's "you might not need an effect" guidance).
@@ -28,6 +37,7 @@ export function PresentationMode() {
     setWasPresenting(presenting);
     if (presenting) {
       setSlideIndex(0);
+      setPickerVisible(true);
     }
   }
 
@@ -53,6 +63,14 @@ export function PresentationMode() {
           viewportZoomFactor: 0.92,
         });
       }
+      // Keep the newly-active slide visible in the picker strip.
+      requestAnimationFrame(() => {
+        activeSlideRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+          inline: "center",
+        });
+      });
     },
     [slides],
   );
@@ -89,6 +107,11 @@ export function PresentationMode() {
       if (event.key.toLowerCase() === "n" && !event.metaKey && !event.ctrlKey) {
         event.preventDefault();
         setNotesVisible((visible) => !visible);
+        return;
+      }
+      if (event.key.toLowerCase() === "g" && !event.metaKey && !event.ctrlKey) {
+        event.preventDefault();
+        setPickerVisible((visible) => !visible);
         return;
       }
       if (
@@ -142,6 +165,72 @@ export function PresentationMode() {
 
   return (
     <>
+      {pickerVisible ? (
+        <div
+          className={cn(
+            "fixed inset-x-0 bottom-24 z-50 mx-auto flex max-w-[min(92vw,56rem)] justify-center px-4 transition-all duration-300",
+            chromeVisible
+              ? "translate-y-0 opacity-100"
+              : "pointer-events-none translate-y-3 opacity-0",
+          )}
+        >
+          <div className="flex w-full flex-col gap-1.5 rounded-xl border border-border/60 bg-background/90 p-2 shadow-lg backdrop-blur">
+            <div className="flex items-center gap-2 px-1">
+              <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+              <span className="text-[11px] font-medium text-muted-foreground">
+                Slides — click to jump (G)
+              </span>
+            </div>
+            <div
+              className="flex gap-2 overflow-x-auto pb-1"
+              role="tablist"
+              aria-label="Presentation slides"
+            >
+              {slides.map((slide, index) => {
+                const active = index === slideIndex;
+                return (
+                  <button
+                    key={slide.id}
+                    ref={active ? activeSlideRef : undefined}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className={cn(
+                      "group flex w-28 shrink-0 flex-col gap-1 rounded-lg border p-1.5 text-left transition-all hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      active
+                        ? "border-primary/60 bg-primary/10 ring-1 ring-primary/30"
+                        : "border-border/60 bg-card/60",
+                    )}
+                    onClick={() => goToSlide(index)}
+                    aria-label={`Slide ${index + 1}: ${slide.name}`}
+                  >
+                    <SlideThumbnail
+                      slide={slide}
+                      files={files}
+                      darkMode={resolvedTheme === "dark"}
+                    />
+                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <span
+                        className={cn(
+                          "flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] text-[9px] font-semibold tabular-nums",
+                          active
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-foreground",
+                        )}
+                        aria-hidden
+                      >
+                        {index + 1}
+                      </span>
+                      <span className="truncate">{slide.name}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {notesVisible && currentNotes.length > 0 ? (
         <div
           className={cn(
@@ -209,6 +298,18 @@ export function PresentationMode() {
             title={currentNotes.length === 0 ? "No notes on this slide" : "Speaker notes (N)"}
           >
             <StickyNote className="h-4 w-4" aria-hidden />
+          </Button>
+          <span className="mx-1 h-4 w-px bg-border" aria-hidden />
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn("h-8 w-8 rounded-full p-0", pickerVisible && "bg-muted text-foreground")}
+            onClick={() => setPickerVisible((visible) => !visible)}
+            aria-pressed={pickerVisible}
+            aria-label="Toggle slide picker (G)"
+            title="Slide picker (G)"
+          >
+            <LayoutGrid className="h-4 w-4" aria-hidden />
           </Button>
           <span className="mx-1 h-4 w-px bg-border" aria-hidden />
           <Button

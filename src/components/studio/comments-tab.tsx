@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { centerCanvasOn, viewportSceneCenter } from "@/lib/canvas-geometry";
 import type {
   CommentGql,
   CommentMutationData,
@@ -95,15 +96,25 @@ interface ThreadActions {
   onLocate: (comment: CommentGql) => void;
 }
 
+/** Which thread actions the current viewer may perform. */
+export interface ThreadCapabilities {
+  edit: boolean;
+  resolve: boolean;
+  remove: boolean;
+  reply: boolean;
+}
+
 /** One comment card — root comments carry pins + resolve, replies stay lean. */
 function CommentCard({
   comment,
   isRoot,
   actions,
+  capabilities,
 }: {
   comment: CommentGql;
   isRoot: boolean;
   actions: ThreadActions;
+  capabilities: ThreadCapabilities;
 }) {
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(comment.body);
@@ -145,6 +156,7 @@ function CommentCard({
       <div className="flex items-center gap-2">
         <CommentAvatar name={authorName} size={isRoot ? "sm" : "xs"} />
         <span className="truncate text-xs font-semibold">{authorName}</span>
+        {comment.author?.isGuest ? <GuestBadge /> : null}
         <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
           {formatRelativeDate(comment.createdAt)}
         </span>
@@ -203,7 +215,7 @@ function CommentCard({
       ) : null}
 
       <div className="flex items-center gap-1 self-end">
-        {isRoot ? (
+        {isRoot && capabilities.resolve ? (
           <Button
             variant="ghost"
             size="sm"
@@ -218,7 +230,7 @@ function CommentCard({
             )}
           </Button>
         ) : null}
-        {!comment.resolved ? (
+        {!comment.resolved && capabilities.edit ? (
           <Button
             variant="ghost"
             size="sm"
@@ -229,29 +241,132 @@ function CommentCard({
             <Pencil className="h-3.5 w-3.5" aria-hidden />
           </Button>
         ) : null}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 w-6 p-0 text-destructive hover:text-destructive"
-          onClick={() => void actions.onDelete(comment.id)}
-          aria-label="Delete comment"
-        >
-          <Trash2 className="h-3.5 w-3.5" aria-hidden />
-        </Button>
+        {capabilities.remove ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+            onClick={() => void actions.onDelete(comment.id)}
+            aria-label="Delete comment"
+          >
+            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+          </Button>
+        ) : null}
       </div>
     </div>
   );
 }
 
+/** Small “Guest” pill marking shared-link comment authors. */
+function GuestBadge() {
+  return (
+    <span
+      className="shrink-0 rounded-full border border-violet-300/60 bg-violet-50 px-1.5 py-px text-[9px] font-medium uppercase tracking-wide text-violet-700 dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-300"
+      title="Commented via a share link (no account)"
+    >
+      Guest
+    </span>
+  );
+}
+
+/** Loading placeholder rows shared by the owner and guest comment tabs. */
+export function CommentsLoadingSkeleton() {
+  return (
+    <div className="flex flex-col gap-2">
+      {[0, 1].map((index) => (
+        <div
+          key={index}
+          className="h-16 animate-pulse rounded-lg border border-border/60 bg-muted/40"
+        />
+      ))}
+    </div>
+  );
+}
+
+/** “No comments yet” empty state shared by both comment tabs. */
+export function CommentsEmptyState({ hint }: { hint: string }) {
+  return (
+    <div className="flex flex-col items-center gap-3 py-10 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+        <MessagesSquare className="h-6 w-6 text-muted-foreground" aria-hidden />
+      </div>
+      <div className="space-y-1">
+        <p className="text-sm font-medium">No comments yet</p>
+        <p className="text-xs text-muted-foreground">{hint}</p>
+      </div>
+    </div>
+  );
+}
+
+/** One comment thread: its root plus the one allowed level of replies. */
+export interface GroupedCommentThread {
+  root: CommentGql;
+  replies: CommentGql[];
+}
+
+/** Groups a flat comment list into threads (roots keep creation order). */
+export function groupCommentThreads(comments: CommentGql[]): GroupedCommentThread[] {
+  const roots = comments.filter((comment) => comment.parentId === null);
+  const repliesByParent = new Map<string, CommentGql[]>();
+  for (const comment of comments) {
+    if (comment.parentId !== null) {
+      const list = repliesByParent.get(comment.parentId);
+      if (list) {
+        list.push(comment);
+      } else {
+        repliesByParent.set(comment.parentId, [comment]);
+      }
+    }
+  }
+  return roots.map((root) => ({ root, replies: repliesByParent.get(root.id) ?? [] }));
+}
+
+/** Comment composer form shared by the owner and guest tabs. */
+export function CommentComposer({
+  draft,
+  onDraftChange,
+  onSubmit,
+  disabled,
+  submitContent,
+}: {
+  draft: string;
+  onDraftChange: (value: string) => void;
+  onSubmit: () => void;
+  disabled?: boolean;
+  submitContent?: React.ReactNode;
+}) {
+  return (
+    <form
+      className="flex items-center gap-1.5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <Input
+        value={draft}
+        onChange={(event) => onDraftChange(event.target.value)}
+        placeholder="Add a comment…"
+        maxLength={5000}
+      />
+      <Button type="submit" size="sm" disabled={disabled} className="gap-1.5">
+        {submitContent ?? "Post"}
+      </Button>
+    </form>
+  );
+}
+
 /** Root comment + its replies (one nesting level) + inline reply composer. */
-function CommentThread({
+export function CommentThread({
   root,
   replies,
   actions,
+  capabilities,
 }: {
   root: CommentGql;
   replies: CommentGql[];
   actions: ThreadActions;
+  capabilities: ThreadCapabilities;
 }) {
   const [replying, setReplying] = useState(false);
   const [replyDraft, setReplyDraft] = useState("");
@@ -268,12 +383,18 @@ function CommentThread({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <CommentCard comment={root} isRoot actions={actions} />
+      <CommentCard comment={root} isRoot actions={actions} capabilities={capabilities} />
 
       {replies.length > 0 ? (
         <div className="ml-3.5 flex flex-col gap-1.5 border-l-2 border-border/70 pl-2.5">
           {replies.map((reply) => (
-            <CommentCard key={reply.id} comment={reply} isRoot={false} actions={actions} />
+            <CommentCard
+              key={reply.id}
+              comment={reply}
+              isRoot={false}
+              actions={actions}
+              capabilities={capabilities}
+            />
           ))}
         </div>
       ) : null}
@@ -318,7 +439,7 @@ function CommentThread({
             <X className="h-3.5 w-3.5" aria-hidden />
           </Button>
         </form>
-      ) : (
+      ) : capabilities.reply ? (
         <button
           type="button"
           className="ml-3.5 flex w-fit items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
@@ -330,7 +451,12 @@ function CommentThread({
             <span className="rounded-full bg-muted px-1.5 text-[10px]">{replies.length}</span>
           ) : null}
         </button>
-      )}
+      ) : replies.length > 0 ? (
+        <span className="ml-3.5 flex w-fit items-center gap-1.5 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+          <Reply className="h-3 w-3" aria-hidden />
+          {replies.length} {replies.length === 1 ? "reply" : "replies"}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -340,6 +466,14 @@ function CommentThread({
 // ---------------------------------------------------------------------------
 
 type CommentFilter = "all" | "open" | "resolved";
+
+/** Owner-level capabilities: full moderation of threads. */
+const OWNER_CAPABILITIES = { edit: true, resolve: true, remove: true, reply: true };
+
+/** Guests on shared links: they may reply but not moderate. */
+const GUEST_CAPABILITIES = { edit: false, resolve: false, remove: false, reply: true };
+
+export { GUEST_CAPABILITIES };
 
 export function CommentsTab({ fileId }: { fileId: string | null }) {
   const [draft, setDraft] = useState("");
@@ -376,32 +510,17 @@ export function CommentsTab({ fileId }: { fileId: string | null }) {
   const comments = data?.comments ?? [];
 
   const threads = useMemo(() => {
-    const roots = comments.filter((comment) => comment.parentId === null);
-    const repliesByParent = new Map<string, CommentGql[]>();
-    for (const comment of comments) {
-      if (comment.parentId !== null) {
-        const list = repliesByParent.get(comment.parentId);
-        if (list) {
-          list.push(comment);
-        } else {
-          repliesByParent.set(comment.parentId, [comment]);
-        }
-      }
-    }
+    const grouped = groupCommentThreads(comments);
     const needle = search.trim().toLowerCase();
     const matches = (comment: CommentGql): boolean =>
       !needle ||
       comment.body.toLowerCase().includes(needle) ||
       (comment.author?.name ?? "").toLowerCase().includes(needle);
-    const filteredRoots = roots.filter((root) => {
+    return grouped.filter(({ root, replies }) => {
       const byFilter = filter === "all" || (filter === "open" ? !root.resolved : root.resolved);
-      if (!byFilter) {
-        return false;
-      }
       // A thread matches the search if its root or any reply matches.
-      return matches(root) || (repliesByParent.get(root.id) ?? []).some((reply) => matches(reply));
+      return byFilter && (matches(root) || replies.some(matches));
     });
-    return filteredRoots.map((root) => ({ root, replies: repliesByParent.get(root.id) ?? [] }));
   }, [comments, filter, search]);
 
   const stats = useMemo(() => {
@@ -412,16 +531,7 @@ export function CommentsTab({ fileId }: { fileId: string | null }) {
     };
   }, [comments]);
 
-  /** Scene coordinates of the current viewport center (where a pin lands). */
-  const pinLocation = useMemo(() => {
-    const canvas = document.querySelector("canvas.excalidraw__canvas");
-    const width = canvas?.clientWidth ?? window.innerWidth;
-    const height = canvas?.clientHeight ?? window.innerHeight;
-    return {
-      x: width / (2 * viewport.zoom) - viewport.scrollX,
-      y: height / (2 * viewport.zoom) - viewport.scrollY,
-    };
-  }, [viewport]);
+  const pinLocation = useMemo(() => viewportSceneCenter(viewport), [viewport]);
 
   const handleAdd = useCallback(async () => {
     const trimmed = draft.trim();
@@ -463,16 +573,7 @@ export function CommentsTab({ fileId }: { fileId: string | null }) {
         if (comment.x === null || comment.y === null || !excalidrawApi) {
           return;
         }
-        const canvas = document.querySelector("canvas.excalidraw__canvas");
-        const width = canvas?.clientWidth ?? window.innerWidth;
-        const height = canvas?.clientHeight ?? window.innerHeight;
-        const { zoom } = viewport;
-        excalidrawApi.updateScene({
-          appState: {
-            scrollX: width / (2 * zoom) - comment.x,
-            scrollY: height / (2 * zoom) - comment.y,
-          },
-        });
+        centerCanvasOn(excalidrawApi, comment.x, comment.y, viewport.zoom);
       },
     }),
     [addComment, deleteComment, excalidrawApi, fileId, resolveComment, updateComment, viewport],
@@ -492,23 +593,12 @@ export function CommentsTab({ fileId }: { fileId: string | null }) {
 
   return (
     <div className="flex h-full flex-col gap-3 p-3">
-      <form
-        className="flex items-center gap-1.5"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void handleAdd();
-        }}
-      >
-        <Input
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder="Add a comment…"
-          maxLength={5000}
-        />
-        <Button type="submit" size="sm" disabled={!draft.trim()}>
-          Post
-        </Button>
-      </form>
+      <CommentComposer
+        draft={draft}
+        onDraftChange={setDraft}
+        onSubmit={() => void handleAdd()}
+        disabled={!draft.trim()}
+      />
 
       <div className="flex flex-wrap items-center gap-1.5">
         <Button
@@ -646,26 +736,9 @@ export function CommentsTab({ fileId }: { fileId: string | null }) {
       <ScrollArea className="flex-1">
         <div className="flex flex-col gap-2.5 pr-2">
           {loading ? (
-            <div className="flex flex-col gap-2">
-              {[0, 1].map((index) => (
-                <div
-                  key={index}
-                  className="h-16 animate-pulse rounded-lg border border-border/60 bg-muted/40"
-                />
-              ))}
-            </div>
+            <CommentsLoadingSkeleton />
           ) : comments.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-10 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                <MessagesSquare className="h-6 w-6 text-muted-foreground" aria-hidden />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium">No comments yet</p>
-                <p className="text-xs text-muted-foreground">
-                  Post the first one — pin it to the canvas or reply in threads.
-                </p>
-              </div>
-            </div>
+            <CommentsEmptyState hint="Post the first one — pin it to the canvas or reply in threads." />
           ) : threads.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-10 text-center">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
@@ -682,7 +755,13 @@ export function CommentsTab({ fileId }: { fileId: string | null }) {
             </div>
           ) : (
             threads.map(({ root, replies }) => (
-              <CommentThread key={root.id} root={root} replies={replies} actions={actions} />
+              <CommentThread
+                key={root.id}
+                root={root}
+                replies={replies}
+                actions={actions}
+                capabilities={OWNER_CAPABILITIES}
+              />
             ))
           )}
         </div>

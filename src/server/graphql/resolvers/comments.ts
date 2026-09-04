@@ -4,7 +4,11 @@ import { z } from "zod";
 import { db } from "@/db";
 import { type CommentRow, comments, files, users } from "@/db/schema";
 import { gqlError } from "@/server/graphql/errors";
-import { type CommentOutput, toCommentOutput } from "@/server/graphql/types";
+import {
+  type CommentAuthorOutput,
+  type CommentOutput,
+  toCommentOutput,
+} from "@/server/graphql/types";
 import { requireOwnedFile } from "./files";
 
 const bodySchema = z
@@ -30,7 +34,7 @@ function parseCoordinate(value: unknown): number | null {
 
 interface CommentWithAuthor {
   comment: CommentRow;
-  author: { id: string; name: string } | null;
+  author: CommentAuthorOutput | null;
 }
 
 /** Shared select shape for comment rows joined with their author. */
@@ -38,10 +42,17 @@ const commentWithAuthor = {
   comment: comments,
   authorId: users.id,
   authorName: users.name,
+  authorIsGuest: users.isGuest,
 };
 
-function authorOf(row: { authorId: string | null; authorName: string | null }) {
-  return row.authorId ? { id: row.authorId, name: row.authorName ?? "" } : null;
+function authorOf(row: {
+  authorId: string | null;
+  authorName: string | null;
+  authorIsGuest: boolean | null;
+}) {
+  return row.authorId
+    ? { id: row.authorId, name: row.authorName ?? "", isGuest: row.authorIsGuest ?? false }
+    : null;
 }
 
 async function fetchCommentWithAuthor(commentId: string): Promise<CommentWithAuthor | null> {
@@ -58,9 +69,8 @@ async function fetchCommentWithAuthor(commentId: string): Promise<CommentWithAut
   return { comment: row.comment, author: authorOf(row) };
 }
 
-/** Lists comments of a viewer-owned file, oldest first, with author info. */
-export async function listComments(userId: string, fileId: string): Promise<CommentOutput[]> {
-  await requireOwnedFile(fileId, userId);
+/** Lists comments of a file, oldest first, with author info (no access check). */
+export async function listFileComments(fileId: string): Promise<CommentOutput[]> {
   const rows = await db
     .select(commentWithAuthor)
     .from(comments)
@@ -68,6 +78,12 @@ export async function listComments(userId: string, fileId: string): Promise<Comm
     .where(eq(comments.fileId, fileId))
     .orderBy(comments.createdAt);
   return rows.map((row) => toCommentOutput(row.comment, authorOf(row)));
+}
+
+/** Lists comments of a viewer-owned file (thin ownership-guarded wrapper). */
+export async function listComments(userId: string, fileId: string): Promise<CommentOutput[]> {
+  await requireOwnedFile(fileId, userId);
+  return listFileComments(fileId);
 }
 
 /**
@@ -92,16 +108,17 @@ async function requireValidParent(fileId: string, parentId: string): Promise<Com
   return parent;
 }
 
-export async function addComment(
-  userId: string,
-  authorName: string,
-  fileId: string,
-  body: unknown,
-  x: unknown,
-  y: unknown,
-  parentId: unknown,
-): Promise<CommentOutput> {
-  await requireOwnedFile(fileId, userId);
+/** Inserts a comment row after validating the (optional) thread parent. */
+export async function insertComment(input: {
+  fileId: string;
+  userId: string;
+  author: CommentAuthorOutput;
+  body: unknown;
+  x: unknown;
+  y: unknown;
+  parentId: unknown;
+}): Promise<CommentOutput> {
+  const { fileId, userId, author, body, x, y, parentId } = input;
   let validatedParentId: string | null = null;
   if (typeof parentId === "string" && parentId.length > 0) {
     await requireValidParent(fileId, parentId);
@@ -122,7 +139,28 @@ export async function addComment(
   if (!row) {
     throw gqlError("INTERNAL_SERVER_ERROR", "Failed to add the comment.");
   }
-  return toCommentOutput(row, { id: userId, name: authorName });
+  return toCommentOutput(row, author);
+}
+
+export async function addComment(
+  userId: string,
+  authorName: string,
+  fileId: string,
+  body: unknown,
+  x: unknown,
+  y: unknown,
+  parentId: unknown,
+): Promise<CommentOutput> {
+  await requireOwnedFile(fileId, userId);
+  return insertComment({
+    fileId,
+    userId,
+    author: { id: userId, name: authorName, isGuest: false },
+    body,
+    x,
+    y,
+    parentId,
+  });
 }
 
 async function requireCommentForUpdate(

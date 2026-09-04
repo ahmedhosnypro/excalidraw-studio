@@ -16,6 +16,8 @@ export interface StorageAdapter {
   delete(key: string): Promise<void>;
   /** Checks whether an object exists. */
   exists(key: string): Promise<boolean>;
+  /** Byte size of an object, or `null` when the key does not exist. */
+  size(key: string): Promise<number | null>;
 }
 
 export type StorageDriverName = "local";

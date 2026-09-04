@@ -18,7 +18,7 @@ export interface PresentationSlide {
   notes: string;
 }
 
-type DialogName = "files" | "auth" | "shortcuts" | null;
+type DialogName = "files" | "auth" | "share" | "shortcuts" | null;
 
 export type SidebarTab = "libraries" | "comments" | "present";
 
@@ -61,6 +61,13 @@ interface EditorState {
   dialog: DialogName;
   openDialog: (dialog: Exclude<DialogName, null>) => void;
   closeDialog: () => void;
+
+  /**
+   * Target file of the share dialog (null = the currently open file). Lets
+   * the files dialog share a non-active file directly from its row.
+   */
+  shareFileId: string | null;
+  openShareDialog: (fileId?: string | null) => void;
 
   /** Auth dialog intent (e.g. "your files are cloud-saved after sign-in"). */
   authIntent: string | null;
@@ -133,7 +140,10 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   dialog: null,
   openDialog: (dialog) => set({ dialog }),
-  closeDialog: () => set({ dialog: null, authIntent: null }),
+  closeDialog: () => set({ dialog: null, authIntent: null, shareFileId: null }),
+
+  shareFileId: null,
+  openShareDialog: (fileId) => set({ dialog: "share", shareFileId: fileId ?? null }),
 
   authIntent: null,
   openAuthDialog: (intent) => set({ dialog: "auth", authIntent: intent ?? null }),

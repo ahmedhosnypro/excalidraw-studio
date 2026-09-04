@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@apollo/client/react";
-import { Loader2 } from "lucide-react";
+import { AlertCircle, Eye, EyeOff, Loader2, PencilRuler } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +35,7 @@ function AuthForm({ mode, onDone }: { mode: "login" | "signup"; onDone: () => vo
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   const [login, { loading: loginLoading }] = useMutation<AuthMutationData, AuthMutationVariables>(
     LOGIN_MUTATION,
@@ -123,22 +124,44 @@ function AuthForm({ mode, onDone }: { mode: "login" | "signup"; onDone: () => vo
       </div>
       <div className="grid gap-2">
         <Label htmlFor={`${mode}-password`}>Password</Label>
-        <Input
-          id={`${mode}-password`}
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder="••••••••"
-          autoComplete={mode === "login" ? "current-password" : "new-password"}
-          required
-          minLength={8}
-        />
+        <div className="relative">
+          <Input
+            id={`${mode}-password`}
+            type={passwordVisible ? "text" : "password"}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="••••••••"
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
+            required
+            minLength={8}
+            className="pr-10"
+          />
+          <button
+            type="button"
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => setPasswordVisible((visible) => !visible)}
+            aria-label={passwordVisible ? "Hide password" : "Show password"}
+            aria-pressed={passwordVisible}
+          >
+            {passwordVisible ? (
+              <EyeOff className="h-4 w-4" aria-hidden />
+            ) : (
+              <Eye className="h-4 w-4" aria-hidden />
+            )}
+          </button>
+        </div>
         {mode === "signup" ? (
           <p className="text-xs text-muted-foreground">At least 8 characters.</p>
         ) : null}
       </div>
       {error ? (
-        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+        <p
+          className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          role="alert"
+        >
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span className="leading-relaxed">{error}</span>
+        </p>
       ) : null}
       <Button type="submit" disabled={loading}>
         {loading ? (
@@ -168,7 +191,15 @@ export function AuthDialog() {
     <Dialog open={isOpen} onOpenChange={(open) => (open ? null : closeDialog())}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Welcome to Excalidraw Studio</DialogTitle>
+          <DialogTitle className="flex items-center gap-2.5">
+            <span
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-sm"
+              aria-hidden
+            >
+              <PencilRuler className="h-5 w-5" />
+            </span>
+            <span>Welcome to Excalidraw Studio</span>
+          </DialogTitle>
           <DialogDescription>
             {authIntent ??
               "Sign in to save your drawings to the cloud, switch between files and comment."}
