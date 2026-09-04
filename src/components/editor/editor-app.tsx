@@ -6,6 +6,7 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState } from "@excalidraw/excalidraw/types";
 import { useEffect, useRef, useState } from "react";
 import { AuthDialog } from "@/components/auth/auth-dialog";
+import { AiDialog } from "@/components/studio/ai-dialog";
 import { CommandPalette } from "@/components/studio/command-palette";
 import { FilesDialog } from "@/components/studio/files-dialog";
 import { PresentationMode } from "@/components/studio/presentation-mode";
@@ -205,6 +206,18 @@ export function EditorApp() {
         return;
       }
 
+      // AI text-to-diagram dialog (advertised as "Generate diagram with AI…").
+      if (mod && event.key.toLowerCase() === "m") {
+        event.preventDefault();
+        const store = useEditorStore.getState();
+        if (user) {
+          store.openDialog("ai");
+        } else {
+          store.openAuthDialog("Sign in to generate diagrams with AI.");
+        }
+        return;
+      }
+
       // Open Excalidraw's built-in image export dialog (advertised as
       // "Export image…" in the command palette).
       if (mod && event.shiftKey && event.key.toLowerCase() === "e") {
@@ -228,6 +241,7 @@ export function EditorApp() {
       <AuthDialog />
       <FilesDialog onOpenFile={(file) => void openFile(file)} />
       <ShareDialog />
+      <AiDialog />
       <PresentationMode />
       <CommandPalette user={user} files={files} onOpenFile={(file) => void openFile(file)} />
     </main>

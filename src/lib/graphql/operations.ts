@@ -464,3 +464,27 @@ export const STORAGE_USAGE_QUERY = gql`
 export interface StorageUsageQueryData {
   storageUsage: StorageUsageGql;
 }
+
+// ---------------------------------------------------------------------------
+// AI text-to-diagram
+// ---------------------------------------------------------------------------
+
+export const GENERATE_DIAGRAM_MUTATION = gql`
+  mutation GenerateDiagram($prompt: String!) {
+    generateDiagram(prompt: $prompt) {
+      elements
+      elementCount
+    }
+  }
+`;
+
+export interface GenerateDiagramMutationData {
+  generateDiagram?: {
+    elements: Record<string, unknown>[];
+    elementCount: number;
+  };
+}
+
+export interface GenerateDiagramMutationVariables {
+  prompt: string;
+}

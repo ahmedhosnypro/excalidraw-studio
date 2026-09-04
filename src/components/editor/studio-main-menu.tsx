@@ -3,7 +3,16 @@
 import { loadFromBlob, MainMenu, WelcomeScreen } from "@excalidraw/excalidraw";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFileData } from "@excalidraw/excalidraw/types";
-import { FilePlus2, FolderOpen, HardDriveDownload, Link2, LogIn, LogOut, Save } from "lucide-react";
+import {
+  FilePlus2,
+  FolderOpen,
+  HardDriveDownload,
+  Link2,
+  LogIn,
+  LogOut,
+  Save,
+  Sparkles,
+} from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback } from "react";
 import { useStudioMutations } from "@/hooks/use-studio-mutations";
@@ -199,6 +208,17 @@ export function StudioWelcomeScreen({ isAuthenticated }: { isAuthenticated: bool
               Sign in
             </WelcomeScreen.Center.MenuItem>
           )}
+          <WelcomeScreen.Center.MenuItem
+            shortcut="Ctrl+M"
+            icon={<Sparkles className="h-4 w-4" />}
+            onSelect={() =>
+              isAuthenticated
+                ? openDialog("ai")
+                : openAuthDialog("Sign in to generate diagrams with AI.")
+            }
+          >
+            Generate a diagram with AI
+          </WelcomeScreen.Center.MenuItem>
           <WelcomeScreen.Center.MenuItemHelp />
         </WelcomeScreen.Center.Menu>
       </WelcomeScreen.Center>

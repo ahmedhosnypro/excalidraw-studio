@@ -291,6 +291,7 @@ don't use) gets **deleted**, not ignored.
 | **M5** | Quality gates | lefthook pre-commit (tsgo → oxlint → biome → eslint → jscpd → knip), configs (biome.json, knip.json, jscpd opts, .oxlintrc), fix ALL warnings, delete unused scaffold, final lint-clean commit |
 | **M6** | Verification | agent-browser E2E: sign up → create file → draw → autosave → switch → reload → verify persistence, palette, sidebar, theme, shortcuts, presentation; fix issues; final push |
 | **R5** | Realtime collaboration | socket.io mini-service (rooms per share token) + live remote cursors, presence stacks, live scene updates for viewers, owner-viewport following, guest-comment notifications (unread badge + toasts) via GraphQL→service internal bridge; print/PDF slide export; autosave empty-over-content guard |
+| **R6** | AI text-to-diagram + polish | `generateDiagram` GraphQL mutation (z-ai-web-dev-sdk LLM server-side, compact JSON → validated Excalidraw elements with bound labels + arrow bindings, per-user rate limit); AI dialog (Ctrl+M / palette / welcome screen, example prompts, shimmer loading); presentation laser pointer (L); Toaster restored (auto-dismiss fix — M5 knip pass had orphaned all toast() callers) |
 
 
 ---

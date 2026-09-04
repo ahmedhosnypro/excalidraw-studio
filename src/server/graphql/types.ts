@@ -3,6 +3,8 @@ import {
   GraphQLFloat,
   GraphQLID,
   GraphQLInt,
+  GraphQLList,
+  GraphQLNonNull,
   GraphQLObjectType,
   GraphQLString,
 } from "graphql";
@@ -181,3 +183,18 @@ export function toFileOutput(row: FileRow): FileOutput {
     updatedAt: row.updatedAt.toISOString(),
   };
 }
+
+/**
+ * AI text-to-diagram result: validated Excalidraw elements (without the
+ * `index` field — assigned client-side when appending to a live scene).
+ */
+export const GenerateDiagramType: GraphQLObjectType = new GraphQLObjectType({
+  name: "GenerateDiagramResult",
+  description: "AI-generated Excalidraw elements for a prompt.",
+  fields: {
+    elements: {
+      type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(GraphQLJSON))),
+    },
+    elementCount: { type: new GraphQLNonNull(GraphQLInt) },
+  },
+});

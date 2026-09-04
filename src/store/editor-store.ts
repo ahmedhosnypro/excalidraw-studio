@@ -18,7 +18,7 @@ export interface PresentationSlide {
   notes: string;
 }
 
-type DialogName = "files" | "auth" | "share" | "shortcuts" | null;
+type DialogName = "files" | "auth" | "share" | "shortcuts" | "ai" | null;
 
 export type SidebarTab = "libraries" | "comments" | "present";
 

@@ -16,6 +16,7 @@ const nextConfig: NextConfig = {
     "@apollo/server",
     "@as-integrations/next",
     "@graphql-tools/schema",
+    "z-ai-web-dev-sdk",
   ],
 };
 

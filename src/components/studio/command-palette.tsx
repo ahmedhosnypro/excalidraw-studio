@@ -33,6 +33,7 @@ import {
   Redo2,
   Save,
   Search,
+  Sparkles,
   Square,
   Sun,
   Type,
@@ -267,6 +268,14 @@ export function CommandPalette({
           perform: () => useEditorStore.getState().openDialog("share"),
         },
         {
+          id: "ai-generate",
+          label: "Generate diagram with AI…",
+          icon: <Sparkles />,
+          shortcut: "Ctrl+M",
+          keywords: "ai generate diagram text to prompt magic llm flowchart chart",
+          perform: () => useEditorStore.getState().openDialog("ai"),
+        },
+        {
           id: "signout",
           label: "Sign out",
           icon: <LogOut />,
@@ -275,16 +284,29 @@ export function CommandPalette({
         },
       );
     } else {
-      commands.push({
-        id: "signin",
-        label: "Sign in",
-        icon: <LogIn />,
-        keywords: "login account sign up signup",
-        perform: () =>
-          useEditorStore
-            .getState()
-            .openAuthDialog("Sign in to save your drawings to the cloud and switch between files."),
-      });
+      commands.push(
+        {
+          id: "ai-generate",
+          label: "Generate diagram with AI…",
+          icon: <Sparkles />,
+          shortcut: "Ctrl+M",
+          keywords: "ai generate diagram text to prompt magic llm flowchart chart",
+          perform: () =>
+            useEditorStore.getState().openAuthDialog("Sign in to generate diagrams with AI."),
+        },
+        {
+          id: "signin",
+          label: "Sign in",
+          icon: <LogIn />,
+          keywords: "login account sign up signup",
+          perform: () =>
+            useEditorStore
+              .getState()
+              .openAuthDialog(
+                "Sign in to save your drawings to the cloud and switch between files.",
+              ),
+        },
+      );
     }
 
     return commands;

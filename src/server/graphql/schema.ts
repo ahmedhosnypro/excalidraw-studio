@@ -14,6 +14,7 @@ import {
 } from "graphql";
 
 import { db } from "@/db";
+import { generateDiagramFromPrompt } from "@/server/ai/diagram";
 import { emptyScene, readScene } from "@/server/scenes";
 import type { ApolloContext } from "./context";
 import { assertAuthenticated } from "./errors";
@@ -47,6 +48,7 @@ import {
 import { GraphQLJSON } from "./scalars";
 import {
   CommentType,
+  GenerateDiagramType,
   type SceneDataOutput,
   SceneDataType,
   SharedFileType,
@@ -403,6 +405,23 @@ const deleteCommentMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
 };
 
 // ---------------------------------------------------------------------------
+// Mutation fields (AI)
+// ---------------------------------------------------------------------------
+
+const generateDiagramMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
+  type: new GraphQLNonNull(GenerateDiagramType),
+  description:
+    "Generates Excalidraw elements from a natural-language prompt (AI text-to-diagram). Elements arrive without `index` — the client assigns fractional indices when appending.",
+  args: {
+    prompt: { type: new GraphQLNonNull(GraphQLString) },
+  },
+  resolve: (_source, args, context) => {
+    assertAuthenticated(context.userId);
+    return generateDiagramFromPrompt(context.userId, args.prompt);
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Schema assembly
 // ---------------------------------------------------------------------------
 
@@ -440,6 +459,7 @@ export const schema = new GraphQLSchema({
       createShareLink: createShareLinkMutation,
       revokeShareLink: revokeShareLinkMutation,
       addGuestComment: addGuestCommentMutation,
+      generateDiagram: generateDiagramMutation,
     },
   }),
 });

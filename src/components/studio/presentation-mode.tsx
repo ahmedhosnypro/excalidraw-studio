@@ -1,7 +1,15 @@
 "use client";
 
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
-import { ChevronLeft, ChevronRight, LayoutGrid, Printer, StickyNote, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Crosshair,
+  LayoutGrid,
+  Printer,
+  StickyNote,
+  X,
+} from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SlideThumbnail } from "@/components/studio/slide-thumbnail";
@@ -12,9 +20,52 @@ import { cn } from "@/lib/utils";
 import { useEditorStore } from "@/store/editor-store";
 
 /**
+ * Presentation laser pointer: a glowing red dot that follows the cursor while
+ * presenting. Renders via direct style mutation (no re-renders per move).
+ */
+function LaserDot({ active }: { active: boolean }) {
+  const dotRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+    const dot = dotRef.current;
+    if (!dot) {
+      return;
+    }
+    // Start off-screen so the dot does not flash at (0, 0).
+    dot.style.transform = "translate3d(-100px, -100px, 0)";
+    const move = (event: PointerEvent): void => {
+      dot.style.transform = `translate3d(${event.clientX - 9}px, ${event.clientY - 9}px, 0)`;
+    };
+    window.addEventListener("pointermove", move);
+    return () => window.removeEventListener("pointermove", move);
+  }, [active]);
+
+  if (!active) {
+    return null;
+  }
+
+  return (
+    <div
+      ref={dotRef}
+      className="pointer-events-none fixed left-0 top-0 z-[70] will-change-transform"
+      aria-hidden
+    >
+      <span className="relative flex h-[18px] w-[18px]">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500/50" />
+        <span className="relative inline-flex h-[18px] w-[18px] rounded-full bg-red-600 shadow-[0_0_12px_4px_rgba(220,38,38,0.55)] ring-2 ring-white/70" />
+      </span>
+    </div>
+  );
+}
+
+/**
  * Full-canvas presentation mode: hides the editing UI (zen + view mode) and
  * steps through slides. Arrow keys / space navigate, Escape exits, N toggles
- * the speaker notes bar, G toggles the slide picker strip.
+ * the speaker notes bar, G toggles the slide picker strip, L toggles the
+ * laser pointer.
  */
 export function PresentationMode() {
   const presenting = useEditorStore((state) => state.presenting);
@@ -26,6 +77,7 @@ export function PresentationMode() {
   const [chromeVisible, setChromeVisible] = useState(true);
   const [notesVisible, setNotesVisible] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(true);
+  const [laserActive, setLaserActive] = useState(false);
   const [wasPresenting, setWasPresenting] = useState(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeSlideRef = useRef<HTMLButtonElement | null>(null);
@@ -43,6 +95,7 @@ export function PresentationMode() {
     if (presenting) {
       setSlideIndex(0);
       setPickerVisible(true);
+      setLaserActive(false);
     }
   }
 
@@ -54,6 +107,7 @@ export function PresentationMode() {
     stopPresentation();
     setSlideIndex(0);
     setNotesVisible(false);
+    setLaserActive(false);
   }, [stopPresentation]);
 
   const goToSlide = useCallback(
@@ -119,6 +173,11 @@ export function PresentationMode() {
         setPickerVisible((visible) => !visible);
         return;
       }
+      if (event.key.toLowerCase() === "l" && !event.metaKey && !event.ctrlKey) {
+        event.preventDefault();
+        setLaserActive((active) => !active);
+        return;
+      }
       if (
         event.key === "ArrowRight" ||
         event.key === "ArrowDown" ||
@@ -170,6 +229,7 @@ export function PresentationMode() {
 
   return (
     <>
+      <LaserDot active={laserActive} />
       {pickerVisible ? (
         <div
           className={cn(
@@ -315,6 +375,22 @@ export function PresentationMode() {
             title="Slide picker (G)"
           >
             <LayoutGrid className="h-4 w-4" aria-hidden />
+          </Button>
+          <span className="mx-1 h-4 w-px bg-border" aria-hidden />
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "h-8 w-8 rounded-full p-0",
+              laserActive &&
+                "bg-red-100 text-red-700 hover:bg-red-200 hover:text-red-800 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900",
+            )}
+            onClick={() => setLaserActive((active) => !active)}
+            aria-pressed={laserActive}
+            aria-label="Toggle laser pointer (L)"
+            title="Laser pointer (L) — a glowing dot follows your cursor"
+          >
+            <Crosshair className="h-4 w-4" aria-hidden />
           </Button>
           <span className="mx-1 h-4 w-px bg-border" aria-hidden />
           <Button
