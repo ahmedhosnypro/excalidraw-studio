@@ -137,7 +137,6 @@ __pycache__
 # sandbox extras
 /skills/
 /examples/
-/mini-services/
 /tests/
 /upload/
 .bun
