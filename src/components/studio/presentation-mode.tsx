@@ -1,12 +1,13 @@
 "use client";
 
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
-import { ChevronLeft, ChevronRight, LayoutGrid, StickyNote, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, LayoutGrid, Printer, StickyNote, X } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SlideThumbnail } from "@/components/studio/slide-thumbnail";
 import { Button } from "@/components/ui/button";
 
+import { printSlides } from "@/lib/print-slides";
 import { cn } from "@/lib/utils";
 import { useEditorStore } from "@/store/editor-store";
 
@@ -30,6 +31,10 @@ export function PresentationMode() {
   const activeSlideRef = useRef<HTMLButtonElement | null>(null);
 
   const files = useMemo<BinaryFiles>(() => excalidrawApi?.getFiles() ?? {}, [excalidrawApi]);
+
+  const handlePrint = useCallback(() => {
+    void printSlides(slides, files, resolvedTheme === "dark");
+  }, [files, resolvedTheme, slides]);
 
   // Reset the slide counter at the moment presentation turns on (render-time
   // state adjustment, per React's "you might not need an effect" guidance).
@@ -310,6 +315,18 @@ export function PresentationMode() {
             title="Slide picker (G)"
           >
             <LayoutGrid className="h-4 w-4" aria-hidden />
+          </Button>
+          <span className="mx-1 h-4 w-px bg-border" aria-hidden />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 rounded-full px-3"
+            onClick={handlePrint}
+            aria-label="Print slides or save as PDF"
+            title="Print / Save as PDF — one slide per page"
+          >
+            <Printer className="mr-1 h-4 w-4" aria-hidden />
+            <span className="hidden sm:inline">PDF</span>
           </Button>
           <span className="mx-1 h-4 w-px bg-border" aria-hidden />
           <Button

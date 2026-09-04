@@ -40,6 +40,8 @@ function loadGuestName(): string {
 function storeGuestName(name: string): void {
   try {
     window.localStorage.setItem(GUEST_NAME_STORAGE_KEY, name);
+    // Notify the realtime layer (same-tab) so live presence picks up the name.
+    window.dispatchEvent(new CustomEvent("studio:guest-name"));
   } catch {
     // Private browsing — keep the name in memory only.
   }

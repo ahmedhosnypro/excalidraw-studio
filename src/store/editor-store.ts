@@ -107,6 +107,14 @@ interface EditorState {
   requestReopen: (id: string) => void;
   clearReopen: () => void;
 
+  /**
+   * True once the open file's stored scene has been applied to the canvas.
+   * Autosave refuses to write a file whose stored content was never loaded
+   * (failed/raced load) — an unsynced canvas must not replace stored content.
+   */
+  sceneLoaded: boolean;
+  setSceneLoaded: (loaded: boolean) => void;
+
   /** Internal flag suppressing autosave while a scene is being loaded. */
   loadingScene: boolean;
   setLoadingScene: (loading: boolean) => void;
@@ -131,8 +139,10 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   activeFileId: null,
   activeFileName: null,
-  openFile: (id, name) => set({ activeFileId: id, activeFileName: name, saveStatus: "idle" }),
-  closeFile: () => set({ activeFileId: null, activeFileName: null, saveStatus: "idle" }),
+  openFile: (id, name) =>
+    set({ activeFileId: id, activeFileName: name, saveStatus: "idle", sceneLoaded: false }),
+  closeFile: () =>
+    set({ activeFileId: null, activeFileName: null, saveStatus: "idle", sceneLoaded: false }),
   renameActiveFile: (name) => set({ activeFileName: name }),
 
   saveStatus: "idle",
@@ -170,6 +180,9 @@ export const useEditorStore = create<EditorState>((set) => ({
   reopenFileId: null,
   requestReopen: (id) => set({ reopenFileId: id }),
   clearReopen: () => set({ reopenFileId: null }),
+
+  sceneLoaded: false,
+  setSceneLoaded: (loaded) => set({ sceneLoaded: loaded }),
 
   loadingScene: false,
   setLoadingScene: (loading) => set({ loadingScene: loading }),

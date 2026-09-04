@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback } from "react";
+import { PresenceStack } from "@/components/studio/realtime-chrome";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,6 +37,7 @@ import type {
   UserGql,
 } from "@/lib/graphql/operations";
 import { COMMENTS_QUERY, FILES_QUERY, LOGOUT_MUTATION, ME_QUERY } from "@/lib/graphql/operations";
+import { useRealtimeStore } from "@/lib/realtime";
 import { cn } from "@/lib/utils";
 import { useEditorStore } from "@/store/editor-store";
 
@@ -112,11 +114,13 @@ function SidebarTabButton({
   tab,
   label,
   badge,
+  unread,
   children,
 }: {
   tab: "comments" | "present";
   label: string;
   badge?: number;
+  unread?: boolean;
   children: React.ReactNode;
 }) {
   const sidebarTab = useEditorStore((state) => state.sidebarTab);
@@ -132,7 +136,7 @@ function SidebarTabButton({
       variant="ghost"
       size="sm"
       className={cn(
-        "h-8 gap-1.5 px-2",
+        "relative h-8 gap-1.5 px-2",
         isActive &&
           "bg-violet-100 text-violet-700 hover:bg-violet-200 hover:text-violet-800 dark:bg-violet-950 dark:text-violet-300 dark:hover:bg-violet-900",
       )}
@@ -145,6 +149,16 @@ function SidebarTabButton({
       {badge !== undefined && badge > 0 ? (
         <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-violet-600 px-1 text-[10px] font-semibold leading-none text-white">
           {badge > 99 ? "99+" : badge}
+        </span>
+      ) : null}
+      {unread && !isActive ? (
+        <span
+          className="absolute -right-0.5 -top-0.5 flex h-2.5 w-2.5"
+          aria-hidden
+          title="New comments since you last looked"
+        >
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-75" />
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-violet-600" />
         </span>
       ) : null}
     </Button>
@@ -179,6 +193,7 @@ export function StudioTopRight({ user }: { user: UserGql | null }) {
   const openCommentCount = (commentsData?.comments ?? []).filter(
     (comment) => comment.parentId === null && !comment.resolved,
   ).length;
+  const unreadComments = useRealtimeStore((state) => state.unreadComments);
 
   const handleLogout = useCallback(async () => {
     const { flushSave, closeFile } = useEditorStore.getState();
@@ -225,7 +240,12 @@ export function StudioTopRight({ user }: { user: UserGql | null }) {
           <span className="hidden lg:inline">Share</span>
         </Button>
       ) : null}
-      <SidebarTabButton tab="comments" label="Comments" badge={openCommentCount}>
+      <SidebarTabButton
+        tab="comments"
+        label="Comments"
+        badge={openCommentCount}
+        unread={unreadComments > 0}
+      >
         <MessageCircle className="h-4 w-4" aria-hidden />
         <span className="hidden lg:inline">Comments</span>
       </SidebarTabButton>
@@ -233,6 +253,7 @@ export function StudioTopRight({ user }: { user: UserGql | null }) {
         <Presentation className="h-4 w-4" aria-hidden />
         <span className="hidden lg:inline">Present</span>
       </SidebarTabButton>
+      <PresenceStack />
       <SaveStatusChip />
       <Button
         variant="ghost"

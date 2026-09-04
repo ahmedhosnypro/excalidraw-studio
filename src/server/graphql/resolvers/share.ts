@@ -7,6 +7,7 @@ import { type FileRow, files, users } from "@/db/schema";
 import { gqlError } from "@/server/graphql/errors";
 import type { CommentOutput, FileOutput, SceneDataOutput } from "@/server/graphql/types";
 import { toFileOutput } from "@/server/graphql/types";
+import { notifyRealtimeCommentAdded } from "@/server/realtime/notify";
 import { emptyScene, readScene } from "@/server/scenes";
 import { insertComment, listFileComments } from "./comments";
 import { requireOwnedFile } from "./files";
@@ -192,7 +193,7 @@ export async function addGuestComment(
     throw gqlError("BAD_USER_INPUT", parsedName.error.issues[0]?.message ?? "Invalid guest name.");
   }
   const guestId = await findOrCreateGuestUser(file.id, parsedName.data);
-  return insertComment({
+  const comment = await insertComment({
     fileId: file.id,
     userId: guestId,
     author: { id: guestId, name: parsedName.data, isGuest: true },
@@ -201,4 +202,14 @@ export async function addGuestComment(
     y,
     parentId,
   });
+  // Notify the owner's live session (unread badge / toast) — fire-and-forget.
+  if (file.shareToken) {
+    void notifyRealtimeCommentAdded({
+      token: file.shareToken,
+      authorName: parsedName.data,
+      isGuest: true,
+      body: comment.body,
+    });
+  }
+  return comment;
 }

@@ -85,6 +85,10 @@ export function EditorApp() {
       const scene = result.data?.scene;
       if (scene) {
         await applyScene(scene.elements, scene.appState, scene.files);
+        // Mark the file as synced-in: autosave may now write it. A failed or
+        // raced load leaves this false, which blocks saving an unsynced
+        // (possibly empty) canvas over the stored scene.
+        useEditorStore.getState().setSceneLoaded(true);
         // Restore the saved viewport exactly when present; otherwise fall
         // back to fitting the drawing into the view.
         const saved = (scene.appState ?? {}) as Record<string, unknown>;

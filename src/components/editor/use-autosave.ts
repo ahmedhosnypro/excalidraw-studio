@@ -12,9 +12,27 @@ import { useEditorStore } from "@/store/editor-store";
 
 const SAVE_DEBOUNCE_MS = 1000;
 
+/** How recently a real pointer/keyboard interaction must have occurred for an
+ * empty-scene overwrite of stored content to count as a user edit (delete-all)
+ * rather than a system race (HMR crash / remount glitch). */
+const INTERACTION_GRACE_MS = 30_000;
+
 interface PendingSnapshot {
   json: string;
   data: SceneDataInput;
+}
+
+/** Whether the serialized baseline scene (the loaded file) has elements. */
+function baselineHasElements(baselineJson: string | null): boolean {
+  if (!baselineJson) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(baselineJson) as { elements?: unknown[] };
+    return (parsed.elements?.length ?? 0) > 0;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -49,6 +67,20 @@ export function useAutosave(isAuthenticated: boolean): {
   const isAuthenticatedRef = useRef(isAuthenticated);
   isAuthenticatedRef.current = isAuthenticated;
 
+  /** Last real user interaction (pointerdown / keydown) seen on the page. */
+  const lastInteractionRef = useRef<number>(0);
+  useEffect(() => {
+    const note = (): void => {
+      lastInteractionRef.current = Date.now();
+    };
+    window.addEventListener("pointerdown", note, true);
+    window.addEventListener("keydown", note, true);
+    return () => {
+      window.removeEventListener("pointerdown", note, true);
+      window.removeEventListener("keydown", note, true);
+    };
+  }, []);
+
   /**
    * Discards any pending (debounced) snapshot — e.g. the mount-time empty
    * scene captured before a file opens. Called right after `flushSave` when
@@ -82,6 +114,25 @@ export function useAutosave(isAuthenticated: boolean): {
       setTimeout(() => {
         void performSave();
       }, 400);
+      return;
+    }
+    // Empty-over-content guard: an empty snapshot without a recent user
+    // interaction is a system race (HMR crash mid-reload, remount glitch),
+    // never a deliberate delete-all — drop it and keep the stored scene.
+    if (
+      snapshot.data.elements.length === 0 &&
+      baselineHasElements(baselineJsonRef.current) &&
+      Date.now() - lastInteractionRef.current > INTERACTION_GRACE_MS
+    ) {
+      pendingRef.current = null;
+      store.getState().setSaveStatus("idle");
+      return;
+    }
+    // Unsynced-canvas guard: the open file's stored scene was never loaded
+    // (failed or raced loadScene) — writing now would replace stored content
+    // with whatever the unsynced canvas holds. Surface the failure instead.
+    if (fileId && !store.getState().sceneLoaded) {
+      store.getState().setSaveStatus("error");
       return;
     }
     if (fileId && isAuthenticatedRef.current) {

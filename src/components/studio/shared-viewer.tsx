@@ -4,15 +4,18 @@ import { useQuery } from "@apollo/client/react";
 import { DefaultSidebar, Excalidraw, Sidebar } from "@excalidraw/excalidraw";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import { Eye, LogIn, MessageCircle, Moon, PencilRuler, Play, Sun } from "lucide-react";
+import { Eye, LogIn, MessageCircle, Moon, PencilRuler, Play, Sun, UserRound } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import "@excalidraw/excalidraw/index.css";
 
 import { SharedCommentPinsLayer } from "@/components/studio/comment-pins-layer";
 import { GuestCommentsTab } from "@/components/studio/guest-comments-tab";
 import { PresentationMode } from "@/components/studio/presentation-mode";
+import { PresenceStack, RealtimeToasts } from "@/components/studio/realtime-chrome";
+import { RemoteCursorsLayer } from "@/components/studio/remote-cursors-layer";
+import { useGuestRealtime } from "@/components/studio/use-guest-realtime";
 import { Button } from "@/components/ui/button";
 import { registerViewportTracking } from "@/lib/canvas-geometry";
 import type {
@@ -30,6 +33,7 @@ import {
   SHARED_FILE_QUERY,
   SHARED_SCENE_QUERY,
 } from "@/lib/graphql/operations";
+import { useRealtimeStore } from "@/lib/realtime";
 import { sceneFilesToArray } from "@/lib/scene-persistence";
 import { buildSlides } from "@/lib/slides";
 import { cn } from "@/lib/utils";
@@ -88,16 +92,33 @@ export function SharedViewer({ token }: { token: string }) {
     variables: { token },
   });
 
-  const { data: sceneData, loading: sceneLoading } = useQuery<
-    SharedSceneQueryData,
-    SharedSceneQueryVariables
-  >(SHARED_SCENE_QUERY, { variables: { token } });
+  const {
+    data: sceneData,
+    loading: sceneLoading,
+    refetch: refetchScene,
+  } = useQuery<SharedSceneQueryData, SharedSceneQueryVariables>(SHARED_SCENE_QUERY, {
+    variables: { token },
+  });
 
-  const { data: commentsData } = useQuery<SharedCommentsQueryData, SharedCommentsQueryVariables>(
-    SHARED_COMMENTS_QUERY,
-    { variables: { token } },
-  );
+  const { data: commentsData, refetch: refetchComments } = useQuery<
+    SharedCommentsQueryData,
+    SharedCommentsQueryVariables
+  >(SHARED_COMMENTS_QUERY, {
+    variables: { token },
+  });
   const commentCount = commentsData?.sharedComments?.length ?? 0;
+
+  // Live collaboration: broadcast our cursor, react to owner activity, and
+  // optionally follow the owner's viewport.
+  const { followEnabled, toggleFollow } = useGuestRealtime({
+    token,
+    refetchScene: async () => {
+      await refetchScene();
+    },
+    refetchComments: async () => {
+      await refetchComments();
+    },
+  });
 
   const handleApiReady = useCallback(
     (api: ExcalidrawImperativeAPI) => {
@@ -117,6 +138,29 @@ export function SharedViewer({ token }: { token: string }) {
     const filesList = sceneFilesToArray(scene.files);
     if (filesList.length > 0) {
       void excalidrawApi.addFiles(filesList);
+    }
+  }, [excalidrawApi, scene]);
+
+  // Live scene refresh: the realtime scene-saved event refetched the query —
+  // apply the fresh elements without touching the viewer's own viewport.
+  const sceneAppliedRef = useRef<unknown>(null);
+  useEffect(() => {
+    if (!scene || !excalidrawApi) {
+      return;
+    }
+    if (sceneAppliedRef.current === scene) {
+      return;
+    }
+    const firstApply = sceneAppliedRef.current === null;
+    sceneAppliedRef.current = scene;
+    // First scene: initialData already mounted it — only later updates need
+    // an explicit updateScene push.
+    if (!firstApply) {
+      excalidrawApi.updateScene({ elements: scene.elements as ExcalidrawElement[] });
+      const filesList = sceneFilesToArray(scene.files);
+      if (filesList.length > 0) {
+        void excalidrawApi.addFiles(filesList);
+      }
     }
   }, [excalidrawApi, scene]);
 
@@ -161,6 +205,12 @@ export function SharedViewer({ token }: { token: string }) {
       useEditorStore.getState().startPresentation(slides);
     }
   }, []);
+
+  // Whether the owner is currently in the room (drives the Follow control).
+  // Called unconditionally — before the loading / error early returns.
+  const ownerOnline = useRealtimeStore((state) =>
+    state.participants.some((participant) => participant.role === "owner"),
+  );
 
   if (infoError) {
     return (
@@ -211,6 +261,36 @@ export function SharedViewer({ token }: { token: string }) {
         </div>
 
         <div className="ml-auto flex items-center gap-1.5">
+          <PresenceStack />
+          {ownerOnline ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "h-8 gap-1.5 px-2",
+                followEnabled
+                  ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 dark:hover:bg-emerald-900"
+                  : "",
+              )}
+              onClick={toggleFollow}
+              aria-pressed={followEnabled}
+              title={
+                followEnabled
+                  ? "Following — your view tracks the owner's pan and zoom"
+                  : "Follow the owner's pan and zoom"
+              }
+            >
+              {followEnabled ? (
+                <span className="relative flex h-2 w-2" aria-hidden>
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                </span>
+              ) : (
+                <UserRound className="h-4 w-4" aria-hidden />
+              )}
+              <span className="hidden md:inline">{followEnabled ? "Following" : "Follow"}</span>
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="sm"
@@ -286,6 +366,8 @@ export function SharedViewer({ token }: { token: string }) {
           </DefaultSidebar>
         </Excalidraw>
         <SharedCommentPinsLayer token={token} />
+        <RemoteCursorsLayer />
+        <RealtimeToasts />
         <PresentationMode />
       </div>
     </div>

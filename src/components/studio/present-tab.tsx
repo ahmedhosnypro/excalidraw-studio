@@ -8,6 +8,7 @@ import {
   Frame,
   Play,
   Presentation as PresentationIcon,
+  Printer,
   RefreshCw,
   StickyNote,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SlideThumbnail } from "@/components/studio/slide-thumbnail";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { printSlides } from "@/lib/print-slides";
 import { buildSlides, reorderFrame, setFrameNote } from "@/lib/slides";
 import { cn } from "@/lib/utils";
 import { type PresentationSlide, useEditorStore } from "@/store/editor-store";
@@ -209,6 +211,13 @@ export function PresentTab({ fileId }: { fileId: string | null }) {
 
   const files = useMemo(() => excalidrawApi?.getFiles() ?? {}, [excalidrawApi]);
 
+  const handlePrint = useCallback(() => {
+    if (slides.length === 0) {
+      return;
+    }
+    void printSlides(slides, files, resolvedTheme === "dark");
+  }, [files, resolvedTheme, slides]);
+
   return (
     <div className="flex h-full flex-col gap-3 p-3">
       <div className="flex items-center justify-between gap-2">
@@ -234,6 +243,19 @@ export function PresentTab({ fileId }: { fileId: string | null }) {
       <Button onClick={handlePlay} disabled={slides.length === 0} className="gap-1.5">
         <Play className="h-4 w-4" aria-hidden />
         {slides.length > 0 ? `Play (${slides.length})` : "Play"}
+      </Button>
+
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={slides.length === 0}
+        className="gap-1.5"
+        onClick={handlePrint}
+        aria-label="Print slides or save as PDF"
+        title="Print / Save as PDF — one slide per page"
+      >
+        <Printer className="h-4 w-4" aria-hidden />
+        Print / PDF
       </Button>
 
       <ScrollArea className="flex-1">

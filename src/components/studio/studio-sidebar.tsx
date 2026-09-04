@@ -6,6 +6,7 @@ import { MessageCircle, Presentation } from "lucide-react";
 import { useCallback } from "react";
 import { CommentsTab } from "@/components/studio/comments-tab";
 import { PresentTab } from "@/components/studio/present-tab";
+import { useRealtimeStore } from "@/lib/realtime";
 import type { SidebarTab } from "@/store/editor-store";
 import { useEditorStore } from "@/store/editor-store";
 
@@ -24,6 +25,11 @@ export function StudioSidebar() {
     useEditorStore
       .getState()
       .setSidebarTab(tab === "comments" || tab === "present" ? (tab as SidebarTab) : null);
+    // Opening the comments tab counts as "reading" — clear the live unread
+    // notifications pushed by the realtime service.
+    if (tab === "comments") {
+      useRealtimeStore.getState().clearUnreadComments();
+    }
   }, []);
 
   return (

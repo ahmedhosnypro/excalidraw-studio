@@ -9,6 +9,8 @@ import "@excalidraw/excalidraw/index.css";
 
 import { CommentPinsLayer } from "@/components/studio/comment-pins-layer";
 import { PinPlacementOverlay } from "@/components/studio/pin-placement-overlay";
+import { RealtimeToasts } from "@/components/studio/realtime-chrome";
+import { RemoteCursorsLayer } from "@/components/studio/remote-cursors-layer";
 import { StudioSidebar } from "@/components/studio/studio-sidebar";
 import { registerViewportTracking } from "@/lib/canvas-geometry";
 import type { UserGql } from "@/lib/graphql/operations";
@@ -16,6 +18,7 @@ import { useEditorStore } from "@/store/editor-store";
 import { StudioMainMenu, StudioWelcomeScreen } from "./studio-main-menu";
 import { StudioTopRight } from "./studio-top-right";
 import { useAutosave } from "./use-autosave";
+import { useOwnerRealtime } from "./use-owner-realtime";
 
 export interface ExcalidrawCanvasProps {
   user: UserGql | null;
@@ -26,6 +29,10 @@ export function ExcalidrawCanvas({ user }: ExcalidrawCanvasProps) {
   const { onSceneChange } = useAutosave(Boolean(user));
   const setExcalidrawApi = useEditorStore((state) => state.setExcalidrawApi);
   const activeFileId = useEditorStore((state) => state.activeFileId);
+
+  // Realtime collaboration: live cursors + presence for the open file's
+  // share link (owner side — no-op without an active link).
+  useOwnerRealtime(user, activeFileId);
 
   // Stable prop identities: Excalidraw re-renders (and re-fires onChange)
   // when render/UIOptions props change identity on every parent render —
@@ -84,6 +91,8 @@ export function ExcalidrawCanvas({ user }: ExcalidrawCanvasProps) {
       </Excalidraw>
       <PinPlacementOverlay />
       <CommentPinsLayer fileId={activeFileId} />
+      <RemoteCursorsLayer />
+      <RealtimeToasts />
     </div>
   );
 }

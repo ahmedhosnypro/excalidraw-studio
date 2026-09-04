@@ -1,7 +1,16 @@
 "use client";
 
 import { useMutation, useQuery } from "@apollo/client/react";
-import { Check, Copy, Globe, Link2, Loader2, ShieldAlert, Users } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Globe,
+  Link2,
+  Loader2,
+  MousePointer2,
+  ShieldAlert,
+  Users,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -179,6 +188,11 @@ export function ShareDialog() {
               <FeatureRow icon={<Users className="h-3.5 w-3.5" aria-hidden />}>
                 Visitors can leave <strong className="font-semibold">comments</strong> with canvas
                 pins under a display name, without signing up.
+              </FeatureRow>
+              <FeatureRow icon={<MousePointer2 className="h-3.5 w-3.5" aria-hidden />}>
+                While you draw, viewers see your{" "}
+                <strong className="font-semibold">live cursor</strong>, presence and scene updates
+                in real time — and can follow your every pan and zoom.
               </FeatureRow>
               <FeatureRow icon={<ShieldAlert className="h-3.5 w-3.5" aria-hidden />}>
                 You stay in control: revoke the link at any time and it stops working immediately.

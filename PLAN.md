@@ -52,6 +52,13 @@
 ## 2. Architecture
 
 ```
+┌─────────────────────────────────────────────────────────────────────┐
+│ Realtime mini-service (mini-services/realtime, port 3003)          │
+│ socket.io, engine path "/" (gateway: /?XTransformPort=3003)        │
+│ rooms per share token: presence, live cursors, viewport follow,    │
+│ scene-saved + comment-added events. Internal notify API :3004     │
+│ (localhost-only, secret-authed) called by the GraphQL layer.      │
+└─────────────────────────────────────────────────────────────────────┘
 ┌──────────────────────────────────────────────────────────────────┐
 │ Next.js 16 App Router (single user route "/")                    │
 │                                                                    │
@@ -283,6 +290,8 @@ don't use) gets **deleted**, not ignored.
 | **M4** | Right sidebar | Libraries tab (persist per user), Comments tab (full CRUD via GraphQL + canvas pins), Present tab (frames → slides, fullscreen playback) |
 | **M5** | Quality gates | lefthook pre-commit (tsgo → oxlint → biome → eslint → jscpd → knip), configs (biome.json, knip.json, jscpd opts, .oxlintrc), fix ALL warnings, delete unused scaffold, final lint-clean commit |
 | **M6** | Verification | agent-browser E2E: sign up → create file → draw → autosave → switch → reload → verify persistence, palette, sidebar, theme, shortcuts, presentation; fix issues; final push |
+| **R5** | Realtime collaboration | socket.io mini-service (rooms per share token) + live remote cursors, presence stacks, live scene updates for viewers, owner-viewport following, guest-comment notifications (unread badge + toasts) via GraphQL→service internal bridge; print/PDF slide export; autosave empty-over-content guard |
+
 
 ---
 

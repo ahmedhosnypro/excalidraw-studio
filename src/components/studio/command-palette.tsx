@@ -1,7 +1,7 @@
 "use client";
 
 import { serializeAsJSON } from "@excalidraw/excalidraw";
-import type { AppState, ToolType } from "@excalidraw/excalidraw/types";
+import type { AppState, BinaryFiles, ToolType } from "@excalidraw/excalidraw/types";
 import {
   ArrowUpRight,
   Circle,
@@ -29,6 +29,7 @@ import {
   Play,
   Plus,
   Presentation,
+  Printer,
   Redo2,
   Save,
   Search,
@@ -53,8 +54,19 @@ import {
 } from "@/components/ui/command";
 import { useStudioMutations } from "@/hooks/use-studio-mutations";
 import type { FileGql, UserGql } from "@/lib/graphql/operations";
+import { printSlides } from "@/lib/print-slides";
 import { buildSlides } from "@/lib/slides";
-import { useEditorStore } from "@/store/editor-store";
+import { type PresentationSlide, useEditorStore } from "@/store/editor-store";
+
+/** Builds slides from the live scene (shared by the present/print commands). */
+function liveSceneSlides(): { slides: PresentationSlide[]; files: BinaryFiles } | null {
+  const { excalidrawApi } = useEditorStore.getState();
+  const elements = excalidrawApi?.getSceneElements();
+  if (!elements) {
+    return null;
+  }
+  return { slides: buildSlides(elements), files: excalidrawApi?.getFiles() ?? {} };
+}
 
 /** Dispatches a keyboard shortcut onto the canvas so the package handles it. */
 function canvasShortcut(
@@ -295,6 +307,21 @@ export function CommandPalette({
         keywords: "save disk download file json excalidraw",
         perform: downloadSceneFile,
       },
+      {
+        id: "print-slides",
+        label: "Print slides (PDF)…",
+        icon: <Printer />,
+        keywords: "print pdf slides presentation export paper save",
+        perform: () => {
+          const live = liveSceneSlides();
+          if (!live || live.slides.length === 0) {
+            return;
+          }
+          useEditorStore.getState().startPresentation(live.slides);
+          const dark = document.documentElement.classList.contains("dark");
+          void printSlides(live.slides, live.files, dark);
+        },
+      },
     ],
     [],
   );
@@ -498,14 +525,9 @@ export function CommandPalette({
         icon: <Play />,
         keywords: "start play present fullscreen slides frames",
         perform: () => {
-          const { excalidrawApi, startPresentation } = useEditorStore.getState();
-          const elements = excalidrawApi?.getSceneElements();
-          if (!elements) {
-            return;
-          }
-          const slides = buildSlides(elements);
-          if (slides.length > 0) {
-            startPresentation(slides);
+          const live = liveSceneSlides();
+          if (live && live.slides.length > 0) {
+            useEditorStore.getState().startPresentation(live.slides);
           }
         },
       },

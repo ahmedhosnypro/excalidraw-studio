@@ -9,6 +9,7 @@ import {
   type CommentOutput,
   toCommentOutput,
 } from "@/server/graphql/types";
+import { notifyRealtimeCommentAdded } from "@/server/realtime/notify";
 import { requireOwnedFile } from "./files";
 
 const bodySchema = z
@@ -151,8 +152,8 @@ export async function addComment(
   y: unknown,
   parentId: unknown,
 ): Promise<CommentOutput> {
-  await requireOwnedFile(fileId, userId);
-  return insertComment({
+  const file = await requireOwnedFile(fileId, userId);
+  const comment = await insertComment({
     fileId,
     userId,
     author: { id: userId, name: authorName, isGuest: false },
@@ -161,6 +162,16 @@ export async function addComment(
     y,
     parentId,
   });
+  // Notify live viewers of the shared link (they refetch the thread list).
+  if (file.shareToken) {
+    void notifyRealtimeCommentAdded({
+      token: file.shareToken,
+      authorName,
+      isGuest: false,
+      body: comment.body,
+    });
+  }
+  return comment;
 }
 
 async function requireCommentForUpdate(

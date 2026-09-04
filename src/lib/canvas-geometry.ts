@@ -57,3 +57,20 @@ export function registerViewportTracking(api: ExcalidrawImperativeAPI): () => vo
     useEditorStore.getState().setViewport({ scrollX, scrollY, zoom: zoom.value });
   });
 }
+
+/**
+ * Converts a pointer event position to scene coordinates (used to broadcast
+ * the live cursor to realtime collaborators). Falls back to the viewport
+ * math when the canvas rect is unavailable.
+ */
+export function clientToScene(clientX: number, clientY: number): { x: number; y: number } {
+  const { scrollX, scrollY, zoom } = useEditorStore.getState().viewport;
+  const canvas = document.querySelector("canvas.interactive");
+  const rect = canvas?.getBoundingClientRect();
+  const left = rect?.left ?? 0;
+  const top = rect?.top ?? 0;
+  return {
+    x: (clientX - left) / zoom - scrollX,
+    y: (clientY - top) / zoom - scrollY,
+  };
+}
