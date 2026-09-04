@@ -18,7 +18,7 @@ export interface PresentationSlide {
   notes: string;
 }
 
-type DialogName = "files" | "auth" | "share" | "shortcuts" | "ai" | null;
+type DialogName = "files" | "auth" | "share" | "shortcuts" | "ai" | "history" | null;
 
 export type SidebarTab = "libraries" | "comments" | "present";
 
@@ -73,6 +73,13 @@ interface EditorState {
    */
   shareFileId: string | null;
   openShareDialog: (fileId?: string | null) => void;
+
+  /**
+   * Target file of the version-history dialog (null = the currently open
+   * file). Restoring a non-active file updates it server-side only.
+   */
+  historyFileId: string | null;
+  openHistoryDialog: (fileId?: string | null) => void;
 
   /** Auth dialog intent (e.g. "your files are cloud-saved after sign-in"). */
   authIntent: string | null;
@@ -156,7 +163,13 @@ export const useEditorStore = create<EditorState>((set) => ({
   dialog: null,
   openDialog: (dialog) => set({ dialog }),
   closeDialog: () =>
-    set({ dialog: null, authIntent: null, shareFileId: null, filesDialogView: "files" }),
+    set({
+      dialog: null,
+      authIntent: null,
+      shareFileId: null,
+      historyFileId: null,
+      filesDialogView: "files",
+    }),
 
   filesDialogView: "files",
   openFilesDialog: (view) => set({ dialog: "files", filesDialogView: view ?? "files" }),
@@ -164,6 +177,9 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   shareFileId: null,
   openShareDialog: (fileId) => set({ dialog: "share", shareFileId: fileId ?? null }),
+
+  historyFileId: null,
+  openHistoryDialog: (fileId) => set({ dialog: "history", historyFileId: fileId ?? null }),
 
   authIntent: null,
   openAuthDialog: (intent) => set({ dialog: "auth", authIntent: intent ?? null }),

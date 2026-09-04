@@ -106,6 +106,22 @@ export const commentReactions = sqliteTable(
   ],
 );
 
+/** One restorable point-in-time copy of a file's scene (version history). */
+export const sceneSnapshots = sqliteTable(
+  "scene_snapshots",
+  {
+    id: text("id").primaryKey().$defaultFn(uuid),
+    fileId: text("file_id")
+      .notNull()
+      .references(() => files.id, { onDelete: "cascade" }),
+    /** null = automatic snapshot; text = user-labelled checkpoint. */
+    label: text("label"),
+    elementCount: integer("element_count").notNull().default(0),
+    createdAt: createdAtColumn(),
+  },
+  (table) => [index("scene_snapshots_file_id_idx").on(table.fileId)],
+);
+
 // ---------------------------------------------------------------------------
 // Relations (classic shape) — consumed by drizzle-graphql's buildSchema to
 // derive nested GraphQL types (FileSelectItem.user, .comments, …).
@@ -137,12 +153,15 @@ export const classicFullSchema = {
   filesRelations,
   commentsRelations,
 };
+// `scene_snapshots` is deliberately kept out of classicFullSchema — like
+// `sessions`, its GraphQL surface stays fully hand-written (ownership +
+// storage semantics the generator cannot know).
 
 // ---------------------------------------------------------------------------
 // Relations (drizzle-orm 1.0 RQBv2 shape) — powers db.query.*.findMany with
 // nested `with` selects on the drizzle instance itself.
 // ---------------------------------------------------------------------------
-export const rqbRelations = defineRelations({ users, files, comments }, (rl) => ({
+export const rqbRelations = defineRelations({ users, files, comments, sceneSnapshots }, (rl) => ({
   users: {
     files: rl.many.files({ from: rl.users.id, to: rl.files.userId }),
   },
@@ -160,3 +179,4 @@ export type UserRow = typeof users.$inferSelect;
 export type FileRow = typeof files.$inferSelect;
 export type CommentRow = typeof comments.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
+export type SceneSnapshotRow = typeof sceneSnapshots.$inferSelect;

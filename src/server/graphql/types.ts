@@ -9,7 +9,7 @@ import {
   GraphQLString,
 } from "graphql";
 
-import type { CommentRow, FileRow, UserRow } from "@/db/schema";
+import type { CommentRow, FileRow, SceneSnapshotRow, UserRow } from "@/db/schema";
 
 import { GraphQLJSON } from "./scalars";
 
@@ -163,6 +163,40 @@ export const StorageUsageType: GraphQLObjectType = new GraphQLObjectType({
     fileCount: { type: GraphQLInt },
   },
 });
+
+/** Metadata row of one version-history snapshot (content fetched on demand). */
+export const SceneSnapshotType: GraphQLObjectType = new GraphQLObjectType({
+  name: "SceneSnapshot",
+  description: "A restorable point-in-time copy of a drawing (version history).",
+  fields: {
+    id: { type: GraphQLID },
+    fileId: { type: GraphQLID },
+    label: {
+      type: GraphQLString,
+      description: "User label; null for automatic snapshots.",
+    },
+    elementCount: { type: GraphQLInt },
+    createdAt: { type: GraphQLString },
+  },
+});
+
+export interface SceneSnapshotOutput {
+  id: string;
+  fileId: string;
+  label: string | null;
+  elementCount: number;
+  createdAt: string;
+}
+
+export function toSnapshotOutput(row: SceneSnapshotRow): SceneSnapshotOutput {
+  return {
+    id: row.id,
+    fileId: row.fileId,
+    label: row.label,
+    elementCount: row.elementCount,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
 
 export interface StorageUsageOutput {
   bytes: number;

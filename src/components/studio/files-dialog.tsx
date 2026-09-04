@@ -11,6 +11,7 @@ import {
   Database,
   FilePlus2,
   FolderOpen,
+  History,
   LayoutGrid,
   LayoutTemplate,
   Link2,
@@ -223,12 +224,14 @@ function FileActionsMenu({
   onRenamed,
   onDuplicated,
   onShared,
+  onHistory,
   onDelete,
 }: {
   file: FileGql;
   onRenamed: () => void;
   onDuplicated: () => void;
   onShared: () => void;
+  onHistory: () => void;
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -275,6 +278,10 @@ function FileActionsMenu({
         <DropdownMenuItem onSelect={() => select(onShared)}>
           <Link2 className="mr-2 h-4 w-4" aria-hidden />
           {file.shareToken ? "Share settings…" : "Share…"}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => select(onHistory)}>
+          <History className="mr-2 h-4 w-4" aria-hidden />
+          Version history…
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -419,6 +426,7 @@ function FileEntry({
     useFileRowState(file);
   const { commitRename, handleDuplicate, handleDelete } = useFileActions(file, onRenamed);
   const openShareDialog = useEditorStore((state) => state.openShareDialog);
+  const openHistoryDialog = useEditorStore((state) => state.openHistoryDialog);
 
   const handleEntryClick = useCallback(() => {
     if (selectMode) {
@@ -491,6 +499,7 @@ function FileEntry({
           onRenamed={() => setRenaming(true)}
           onDuplicated={() => void handleDuplicate()}
           onShared={() => openShareDialog(file.id)}
+          onHistory={() => openHistoryDialog(file.id)}
           onDelete={() => setDeleteDialogOpen(true)}
         />
       </div>
@@ -736,11 +745,13 @@ export function FilesDialog({ onOpenFile }: { onOpenFile: (file: FileGql) => voi
       <Dialog open={dialog === "files"} onOpenChange={(open) => (open ? null : closeDialog())}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>My files</DialogTitle>
+            <DialogTitle>{gallery === "templates" ? "New from template" : "My files"}</DialogTitle>
             <DialogDescription>
-              {isAuthenticated
-                ? "Your cloud-saved drawings. Open one to continue where you left off."
-                : "Sign in to access your cloud-saved drawings."}
+              {gallery === "templates"
+                ? "Pick a starter scene — searchable and filterable, one click creates your file."
+                : isAuthenticated
+                  ? "Your cloud-saved drawings. Open one to continue where you left off."
+                  : "Sign in to access your cloud-saved drawings."}
             </DialogDescription>
           </DialogHeader>
 

@@ -13,6 +13,10 @@ export interface SceneTemplate {
   name: string;
   description: string;
   emoji: string;
+  /** Grouping label rendered as filter chips in the gallery. */
+  category: string;
+  /** Extra search terms beyond name/description (lower-cased). */
+  keywords: string[];
   /** Compact element specs — expanded lazily via `templateElements`. */
   specs: CompactElementSpec[];
 }
@@ -66,6 +70,8 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
     name: "Basic flowchart",
     description: "A vertical decision flow with a retry loop.",
     emoji: "🧭",
+    category: "Diagrams",
+    keywords: ["process", "decision", "workflow", "flow"],
     specs: [
       shape("n1", "ellipse", 400, 60, 180, 70, "Start"),
       shape("n2", "rectangle", 390, 200, 200, 70, "Step: do work"),
@@ -84,6 +90,8 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
     name: "Kanban board",
     description: "Four columns to track work from backlog to done.",
     emoji: "🗂️",
+    category: "Boards",
+    keywords: ["agile", "tasks", "cards", "scrum"],
     specs: [
       shape("c1", "rectangle", 120, 100, 200, 500, "Backlog"),
       shape("c2", "rectangle", 380, 100, 200, 500, "To do"),
@@ -100,6 +108,8 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
     name: "Mind map",
     description: "A central idea with four branches to explore.",
     emoji: "💭",
+    category: "Diagrams",
+    keywords: ["brainstorm", "ideas", "branches", "tree"],
     specs: [
       shape("c", "ellipse", 460, 330, 240, 110, "Central idea"),
       shape("b1", "rectangle", 80, 100, 200, 80, "Branch A"),
@@ -117,6 +127,8 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
     name: "Sprint retro",
     description: "Three columns for the team retrospective.",
     emoji: "🔄",
+    category: "Boards",
+    keywords: ["agile", "retrospective", "team", "meeting"],
     specs: [
       shape("c1", "rectangle", 120, 120, 280, 460, "Went well"),
       shape("c2", "rectangle", 470, 120, 280, 460, "To improve"),
@@ -131,6 +143,8 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
     name: "App wireframe",
     description: "A simple landing page layout sketch.",
     emoji: "📱",
+    category: "Product",
+    keywords: ["ui", "landing page", "layout", "web"],
     specs: [
       shape("nav", "rectangle", 120, 80, 880, 70, "Nav bar"),
       shape("hero", "rectangle", 120, 190, 520, 300, "Hero"),
@@ -148,6 +162,8 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
     name: "Process lanes",
     description: "Two swimlanes showing a hand-off between teams.",
     emoji: "🏊",
+    category: "Diagrams",
+    keywords: ["swimlane", "teams", "handoff", "process"],
     specs: [
       shape("lane1", "rectangle", 120, 100, 1000, 260, "Team one"),
       shape("lane2", "rectangle", 120, 400, 1000, 260, "Team two"),

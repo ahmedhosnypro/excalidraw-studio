@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "@apollo/client/react";
+import { useMutation } from "@apollo/client/react";
 import {
   Check,
   Copy,
@@ -21,25 +21,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useDialogFileTarget } from "@/hooks/use-dialog-file";
 import { useToast } from "@/hooks/use-toast";
-import type {
-  FileGql,
-  FilesQueryData,
-  MeQueryData,
-  ShareLinkMutationData,
-  ShareLinkMutationVariables,
-} from "@/lib/graphql/operations";
-import {
-  CREATE_SHARE_LINK_MUTATION,
-  FILES_QUERY,
-  ME_QUERY,
-  REVOKE_SHARE_LINK_MUTATION,
-} from "@/lib/graphql/operations";
+import type { ShareLinkMutationData, ShareLinkMutationVariables } from "@/lib/graphql/operations";
+import { CREATE_SHARE_LINK_MUTATION, REVOKE_SHARE_LINK_MUTATION } from "@/lib/graphql/operations";
 import { cn } from "@/lib/utils";
-import { useEditorStore } from "@/store/editor-store";
 
 /** Refetches the files list (share token state) after a link mutation. */
-const REFETCH = [{ query: ME_QUERY }, "Files"];
+const REFETCH = ["Files"];
 
 /** Small feature bullet row used in both dialog states. */
 function FeatureRow({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
@@ -57,26 +46,9 @@ function FeatureRow({ icon, children }: { icon: React.ReactNode; children: React
 }
 
 export function ShareDialog() {
-  const dialog = useEditorStore((state) => state.dialog);
-  const closeDialog = useEditorStore((state) => state.closeDialog);
-  const activeFileId = useEditorStore((state) => state.activeFileId);
-  const activeFileName = useEditorStore((state) => state.activeFileName);
-  const shareFileId = useEditorStore((state) => state.shareFileId);
+  const { isOpen, closeDialog, targetFileId, targetFile, targetFileName } =
+    useDialogFileTarget("share");
   const { toast } = useToast();
-
-  const { data: meData } = useQuery<MeQueryData>(ME_QUERY);
-  const isAuthenticated = Boolean(meData?.me);
-  const { data: filesData } = useQuery<FilesQueryData>(FILES_QUERY, {
-    skip: !isAuthenticated,
-  });
-
-  // Explicit row target wins; otherwise the dialog shares the open file.
-  const targetFileId = dialog === "share" ? (shareFileId ?? activeFileId) : null;
-  const activeFile = useMemo(
-    () => (filesData?.files ?? []).find((file: FileGql) => file.id === targetFileId) ?? null,
-    [targetFileId, filesData?.files],
-  );
-  const targetFileName = activeFile?.name ?? activeFileName ?? "drawing";
 
   const [createShareLink, createLink] = useMutation<
     ShareLinkMutationData,
@@ -88,7 +60,7 @@ export function ShareDialog() {
   >(REVOKE_SHARE_LINK_MUTATION, { refetchQueries: REFETCH });
 
   const [copied, setCopied] = useState(false);
-  const shareToken = activeFile?.shareToken ?? null;
+  const shareToken = targetFile?.shareToken ?? null;
 
   useEffect(() => {
     if (!copied) {
@@ -154,7 +126,7 @@ export function ShareDialog() {
   }, [shareUrl, toast]);
 
   return (
-    <Dialog open={dialog === "share"} onOpenChange={(open) => (open ? null : closeDialog())}>
+    <Dialog open={isOpen} onOpenChange={(open) => (open ? null : closeDialog())}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

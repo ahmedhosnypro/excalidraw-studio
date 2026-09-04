@@ -10,7 +10,8 @@ import { Server, type Socket } from "socket.io";
  * (`share:<token>`) shared by the owner editor and any number of guests.
  *
  * An internal HTTP endpoint on port 3004 (localhost only) lets the Next.js
- * GraphQL layer push notifications (new comments) into rooms.
+ * GraphQL layer push events into rooms: comment-added, reactions, and
+ * scene-saved (server-side scene changes such as version restores).
  */
 
 const WS_PORT = 3003;
@@ -255,6 +256,22 @@ const internalServer = createServer(async (req: IncomingMessage, res: ServerResp
     const token = cleanString(body?.token, 128);
     if (!token) {
       res.writeHead(400).end();
+      return;
+    }
+    if (body?.event === "reactions") {
+      // A comment's reactions changed — everyone refetches the thread list.
+      io.to(roomFor(token)).emit("rt:reactions", {});
+      res.writeHead(204).end();
+      return;
+    }
+    if (body?.event === "scene-saved") {
+      // Server-side scene change (e.g. version restore) — viewers refetch.
+      const payload = body?.payload as SceneSavedPayload | undefined;
+      const fileId = cleanString(payload?.fileId, 64);
+      if (fileId) {
+        io.to(roomFor(token)).emit("rt:scene-saved", { fileId });
+      }
+      res.writeHead(204).end();
       return;
     }
     const payload = body?.payload as CommentAddedPayload | undefined;

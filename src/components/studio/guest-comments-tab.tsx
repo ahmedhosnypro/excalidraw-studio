@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "@apollo/client/react";
 import { Eye, Loader2, MessageSquareDashed, Send, UserRound } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CommentComposer,
   CommentsEmptyState,
@@ -29,6 +29,7 @@ import {
   SHARED_COMMENTS_QUERY,
   TOGGLE_GUEST_REACTION_MUTATION,
 } from "@/lib/graphql/operations";
+import { useRealtimeStore } from "@/lib/realtime";
 import { cn } from "@/lib/utils";
 import { useEditorStore } from "@/store/editor-store";
 
@@ -74,6 +75,16 @@ export function GuestCommentsTab({ token }: { token: string }) {
     // flagged "mine". Re-subscribes when the name changes.
     variables: { token, viewerGuestName: guestName.trim() || undefined },
   });
+
+  // Live reactions: the owner (or another guest) toggling a reaction bumps
+  // the realtime version — refresh with the CURRENT name variables so the
+  // guest's own "mine" flags stay correct.
+  const reactionsVersion = useRealtimeStore((state) => state.reactionsVersion);
+  useEffect(() => {
+    if (reactionsVersion > 0) {
+      void refetchComments();
+    }
+  }, [reactionsVersion, refetchComments]);
   const [addGuestComment, mutation] = useMutation<
     GuestCommentMutationData,
     GuestCommentMutationVariables

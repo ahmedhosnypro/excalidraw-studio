@@ -7,6 +7,7 @@ import {
   FilePlus2,
   FolderOpen,
   HardDriveDownload,
+  History as HistoryIcon,
   LayoutTemplate,
   Link2,
   LogIn,
@@ -62,6 +63,7 @@ export function StudioMainMenu({ isAuthenticated }: { isAuthenticated: boolean }
   const { createFile, logout } = useStudioMutations();
 
   const openDialog = useEditorStore((state) => state.openDialog);
+  const openHistoryDialog = useEditorStore((state) => state.openHistoryDialog);
   const openAuthDialog = useEditorStore((state) => state.openAuthDialog);
   const openFile = useEditorStore((state) => state.openFile);
   const flushSave = useEditorStore((state) => state.flushSave);
@@ -135,6 +137,15 @@ export function StudioMainMenu({ isAuthenticated }: { isAuthenticated: boolean }
             onSelect={() => openDialog("share")}
           >
             Share…
+          </MainMenu.Item>
+        ) : null}
+        {isAuthenticated ? (
+          <MainMenu.Item
+            icon={<HistoryIcon className="h-4 w-4" />}
+            shortcut="Ctrl+Alt+H"
+            onSelect={() => openHistoryDialog()}
+          >
+            Version history…
           </MainMenu.Item>
         ) : null}
         <MainMenu.DefaultItems.Export />

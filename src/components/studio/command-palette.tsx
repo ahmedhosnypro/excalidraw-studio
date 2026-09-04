@@ -16,6 +16,7 @@ import {
   Frame,
   Grid3x3,
   Hand,
+  History,
   Image as ImageIcon,
   LayoutTemplate,
   Link2,
@@ -277,6 +278,14 @@ export function CommandPalette({
           shortcut: "Ctrl+E",
           keywords: "share link public view guests invite collaborate",
           perform: () => useEditorStore.getState().openDialog("share"),
+        },
+        {
+          id: "history",
+          label: "Version history…",
+          icon: <History />,
+          shortcut: "Ctrl+Alt+H",
+          keywords: "history versions snapshots restore undo time travel checkpoint",
+          perform: () => useEditorStore.getState().openHistoryDialog(),
         },
         {
           id: "ai-generate",

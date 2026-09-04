@@ -40,6 +40,7 @@ import {
   TOGGLE_COMMENT_REACTION_MUTATION,
   UPDATE_COMMENT_MUTATION,
 } from "@/lib/graphql/operations";
+import { useRealtimeStore } from "@/lib/realtime";
 import { formatRelativeDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { useEditorStore } from "@/store/editor-store";
@@ -626,10 +627,24 @@ export function CommentsTab({ fileId }: { fileId: string | null }) {
   const pinPlacementActive = useEditorStore((state) => state.pinPlacementActive);
   const clearPendingPin = useEditorStore((state) => state.clearPendingPin);
 
-  const { data, loading } = useQuery<CommentsQueryData, CommentsQueryVariables>(COMMENTS_QUERY, {
+  const {
+    data,
+    loading,
+    refetch: refetchComments,
+  } = useQuery<CommentsQueryData, CommentsQueryVariables>(COMMENTS_QUERY, {
     variables: { fileId: fileId ?? "" },
     skip: !fileId,
   });
+
+  // Live reactions: guests (or the owner from another session) toggling a
+  // reaction bumps the realtime version — refresh the thread list so new
+  // aggregates and "mine" flags appear without a manual reload.
+  const reactionsVersion = useRealtimeStore((state) => state.reactionsVersion);
+  useEffect(() => {
+    if (reactionsVersion > 0 && fileId) {
+      void refetchComments();
+    }
+  }, [reactionsVersion, fileId, refetchComments]);
   const [addComment] = useMutation<CommentMutationData, CommentMutationVariables>(
     ADD_COMMENT_MUTATION,
   );

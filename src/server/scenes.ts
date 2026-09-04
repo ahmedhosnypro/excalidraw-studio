@@ -62,6 +62,11 @@ export function sceneStorageKey(userId: string, fileId: string): string {
   return `scenes/${userId}/${fileId}.excalidraw`;
 }
 
+/** Storage location of one version-history snapshot blob. */
+export function snapshotStorageKey(userId: string, fileId: string, snapshotId: string): string {
+  return `snapshots/${userId}/${fileId}/${snapshotId}.excalidraw`;
+}
+
 export async function writeScene(
   storageKey: string,
   data: { elements: unknown[]; appState: Record<string, unknown>; files: Record<string, unknown> },

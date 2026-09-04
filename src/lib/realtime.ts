@@ -58,6 +58,11 @@ interface RealtimeState {
    * refetches the shared scene.
    */
   sceneVersion: number;
+  /**
+   * Increments whenever any participant changes a reaction — comment tabs
+   * listen and refetch their thread lists.
+   */
+  reactionsVersion: number;
 
   setJoined: (token: string, role: "owner" | "guest", selfId: string | null) => void;
   setSelfId: (selfId: string | null) => void;
@@ -68,6 +73,7 @@ interface RealtimeState {
   clearUnreadComments: () => void;
   setOwnerViewport: (viewport: OwnerViewport | null) => void;
   bumpSceneVersion: () => void;
+  bumpReactionsVersion: () => void;
   pushToast: (kind: RealtimeToast["kind"], message: string) => void;
   dismissToast: (id: number) => void;
 }
@@ -83,6 +89,7 @@ export const useRealtimeStore = create<RealtimeState>((set) => ({
   toasts: [],
   ownerViewport: null,
   sceneVersion: 0,
+  reactionsVersion: 0,
 
   setJoined: (token, role, selfId) =>
     set({
@@ -143,6 +150,7 @@ export const useRealtimeStore = create<RealtimeState>((set) => ({
   clearUnreadComments: () => set({ unreadComments: 0 }),
   setOwnerViewport: (viewport) => set({ ownerViewport: viewport }),
   bumpSceneVersion: () => set((state) => ({ sceneVersion: state.sceneVersion + 1 })),
+  bumpReactionsVersion: () => set((state) => ({ reactionsVersion: state.reactionsVersion + 1 })),
   pushToast: (kind, message) =>
     set((state) => ({
       toasts: [...state.toasts, { id: Date.now() + Math.random(), kind, message }].slice(-4),
@@ -178,6 +186,8 @@ export interface JoinOptions {
   onSceneSaved?: () => void;
   /** Viewer-only: the owner moved their viewport (follow mode). */
   onOwnerViewport?: (viewport: OwnerViewport) => void;
+  /** Any participant changed a reaction (both roles refetch the thread). */
+  onReactions?: () => void;
 }
 
 /** Joins (or switches) the realtime room for a share token. */
@@ -241,6 +251,13 @@ export function joinRealtimeRoom(options: JoinOptions): () => void {
     useRealtimeStore.getState().setOwnerViewport(viewport);
     options.onOwnerViewport?.(viewport);
   };
+  const handleReactions = (): void => {
+    if (useRealtimeStore.getState().roomToken !== token) {
+      return;
+    }
+    useRealtimeStore.getState().bumpReactionsVersion();
+    options.onReactions?.();
+  };
   const handleDisconnect = (): void => {
     useRealtimeStore.getState().setDisconnected();
   };
@@ -251,6 +268,7 @@ export function joinRealtimeRoom(options: JoinOptions): () => void {
   socket.on("rt:comment-added", handleComment);
   socket.on("rt:scene-saved", handleSceneSaved);
   socket.on("rt:viewport", handleViewport);
+  socket.on("rt:reactions", handleReactions);
   socket.on("disconnect", handleDisconnect);
 
   if (socket.connected) {
@@ -267,6 +285,7 @@ export function joinRealtimeRoom(options: JoinOptions): () => void {
     socket.off("rt:comment-added", handleComment);
     socket.off("rt:scene-saved", handleSceneSaved);
     socket.off("rt:viewport", handleViewport);
+    socket.off("rt:reactions", handleReactions);
     socket.off("disconnect", handleDisconnect);
     if (useRealtimeStore.getState().roomToken === token) {
       socket.disconnect();

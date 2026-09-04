@@ -529,6 +529,94 @@ export interface StorageUsageQueryData {
 }
 
 // ---------------------------------------------------------------------------
+// Version history (scene snapshots)
+// ---------------------------------------------------------------------------
+
+interface SceneSnapshotGql {
+  id: string;
+  fileId: string;
+  label: string | null;
+  elementCount: number;
+  createdAt: string;
+}
+
+export const SCENE_SNAPSHOTS_QUERY = gql`
+  query SceneSnapshots($fileId: ID!) {
+    sceneSnapshots(fileId: $fileId) {
+      id
+      fileId
+      label
+      elementCount
+      createdAt
+    }
+  }
+`;
+
+export interface SceneSnapshotsQueryData {
+  sceneSnapshots: SceneSnapshotGql[];
+}
+
+export interface SceneSnapshotsQueryVariables {
+  fileId: string;
+}
+
+export const SCENE_SNAPSHOT_QUERY = gql`
+  query SceneSnapshotContent($id: ID!) {
+    sceneSnapshot(id: $id) {
+      elements
+      appState
+      files
+    }
+  }
+`;
+
+export interface SceneSnapshotQueryData {
+  sceneSnapshot: SceneDataGql;
+}
+
+export interface SceneSnapshotQueryVariables {
+  id: string;
+}
+
+export const CREATE_SCENE_SNAPSHOT_MUTATION = gql`
+  mutation CreateSceneSnapshot($fileId: ID!, $label: String) {
+    createSceneSnapshot(fileId: $fileId, label: $label) {
+      id
+      fileId
+      label
+      elementCount
+      createdAt
+    }
+  }
+`;
+
+export const RESTORE_SCENE_SNAPSHOT_MUTATION = gql`
+  mutation RestoreSceneSnapshot($id: ID!) {
+    restoreSceneSnapshot(id: $id) {
+      ${FILE_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_SCENE_SNAPSHOT_MUTATION = gql`
+  mutation DeleteSceneSnapshot($id: ID!) {
+    deleteSceneSnapshot(id: $id)
+  }
+`;
+
+export interface SnapshotMutationData {
+  createSceneSnapshot?: SceneSnapshotGql;
+  restoreSceneSnapshot?: FileGql;
+  deleteSceneSnapshot?: boolean;
+}
+
+export interface SnapshotMutationVariables {
+  fileId?: string;
+  id?: string;
+  label?: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // AI text-to-diagram
 // ---------------------------------------------------------------------------
 

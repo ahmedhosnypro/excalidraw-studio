@@ -39,6 +39,13 @@ import {
   storageUsageOf,
 } from "./resolvers/files";
 import {
+  createSceneSnapshot,
+  deleteSceneSnapshot,
+  listSceneSnapshots,
+  readSceneSnapshot,
+  restoreSceneSnapshot,
+} from "./resolvers/history";
+import {
   addGuestComment,
   createShareLink,
   revokeShareLink,
@@ -53,6 +60,7 @@ import {
   GenerateDiagramType,
   type SceneDataOutput,
   SceneDataType,
+  SceneSnapshotType,
   SharedFileType,
   StorageUsageType,
   toUserOutput,
@@ -169,6 +177,30 @@ const storageUsageQuery: GraphQLFieldConfig<unknown, ApolloContext> = {
   resolve: (_source, _args, context) => {
     assertAuthenticated(context.userId);
     return storageUsageOf(context.userId);
+  },
+};
+
+const sceneSnapshotsQuery: GraphQLFieldConfig<unknown, ApolloContext> = {
+  type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(SceneSnapshotType))),
+  description: "Version history: metadata of a viewer-owned file's snapshots, newest first.",
+  args: {
+    fileId: { type: new GraphQLNonNull(GraphQLID) },
+  },
+  resolve: (_source, args, context) => {
+    assertAuthenticated(context.userId);
+    return listSceneSnapshots(context.userId, String(args.fileId));
+  },
+};
+
+const sceneSnapshotQuery: GraphQLFieldConfig<unknown, ApolloContext> = {
+  type: new GraphQLNonNull(SceneDataType),
+  description: "Version history: full contents of one snapshot (preview / restore source).",
+  args: {
+    id: { type: new GraphQLNonNull(GraphQLID) },
+  },
+  resolve: (_source, args, context): Promise<SceneDataOutput> => {
+    assertAuthenticated(context.userId);
+    return readSceneSnapshot(context.userId, String(args.id));
   },
 };
 
@@ -291,6 +323,42 @@ const migrateGuestSceneMutation = fileMutationConfig(
     );
   },
 );
+
+// ---------------------------------------------------------------------------
+// Mutation fields (version history)
+// ---------------------------------------------------------------------------
+
+const createSceneSnapshotMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
+  type: new GraphQLNonNull(SceneSnapshotType),
+  description: "Version history: save a labelled checkpoint of the file's currently stored scene.",
+  args: {
+    fileId: { type: new GraphQLNonNull(GraphQLID) },
+    label: { type: GraphQLString },
+  },
+  resolve: (_source, args, context) => {
+    assertAuthenticated(context.userId);
+    return createSceneSnapshot(context.userId, String(args.fileId), args.label);
+  },
+};
+
+const restoreSceneSnapshotMutation = fileMutationConfig(
+  "Version history: restore a snapshot as the file's live scene (auto-snapshots the current state first).",
+  { id: { type: new GraphQLNonNull(GraphQLID) } },
+  (_source, args, context) => {
+    assertAuthenticated(context.userId);
+    return restoreSceneSnapshot(context.userId, String(args.id));
+  },
+);
+
+const deleteSceneSnapshotMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
+  type: new GraphQLNonNull(GraphQLBoolean),
+  description: "Version history: delete one snapshot of a file you own.",
+  args: { id: { type: new GraphQLNonNull(GraphQLID) } },
+  resolve: (_source, args, context) => {
+    assertAuthenticated(context.userId);
+    return deleteSceneSnapshot(context.userId, String(args.id));
+  },
+};
 
 const deleteFileMutation: GraphQLFieldConfig<unknown, ApolloContext> = {
   type: new GraphQLNonNull(GraphQLBoolean),
@@ -495,6 +563,8 @@ export const schema = new GraphQLSchema({
       scene: sceneQuery,
       comments: commentsQuery,
       storageUsage: storageUsageQuery,
+      sceneSnapshots: sceneSnapshotsQuery,
+      sceneSnapshot: sceneSnapshotQuery,
       sharedFile: sharedFileQuery,
       sharedScene: sharedSceneQuery,
       sharedComments: sharedCommentsQuery,
@@ -521,6 +591,9 @@ export const schema = new GraphQLSchema({
       createShareLink: createShareLinkMutation,
       revokeShareLink: revokeShareLinkMutation,
       addGuestComment: addGuestCommentMutation,
+      createSceneSnapshot: createSceneSnapshotMutation,
+      restoreSceneSnapshot: restoreSceneSnapshotMutation,
+      deleteSceneSnapshot: deleteSceneSnapshotMutation,
       generateDiagram: generateDiagramMutation,
       improveDiagram: improveDiagramMutation,
     },

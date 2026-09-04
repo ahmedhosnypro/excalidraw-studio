@@ -1,14 +1,12 @@
 "use client";
 
 import { useLazyQuery, useQuery } from "@apollo/client/react";
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
-
-import type { AppState } from "@excalidraw/excalidraw/types";
 import { useEffect, useRef, useState } from "react";
 import { AuthDialog } from "@/components/auth/auth-dialog";
 import { AiDialog } from "@/components/studio/ai-dialog";
 import { CommandPalette } from "@/components/studio/command-palette";
 import { FilesDialog } from "@/components/studio/files-dialog";
+import { HistoryDialog } from "@/components/studio/history-dialog";
 import { PresentationMode } from "@/components/studio/presentation-mode";
 import { ShareDialog } from "@/components/studio/share-dialog";
 import { SharedViewer } from "@/components/studio/shared-viewer";
@@ -20,33 +18,10 @@ import type {
   SceneQueryVariables,
 } from "@/lib/graphql/operations";
 import { FILES_QUERY, ME_QUERY, SCENE_QUERY } from "@/lib/graphql/operations";
-import { loadGuestScene, sceneFilesToArray } from "@/lib/scene-persistence";
+import { applySavedViewport, applySceneToCanvas } from "@/lib/scene-canvas";
+import { loadGuestScene } from "@/lib/scene-persistence";
 import { useEditorStore } from "@/store/editor-store";
 import { ExcalidrawCanvas } from "./excalidraw-canvas";
-
-/** Applies a loaded scene to the canvas. */
-async function applyScene(
-  elements: unknown[],
-  appState: Record<string, unknown> | undefined,
-  files: Record<string, unknown> | undefined,
-): Promise<void> {
-  const api = useEditorStore.getState().excalidrawApi;
-  if (!api) {
-    return;
-  }
-  // GraphQL results arrive deep-frozen (Apollo dev cache) while Excalidraw
-  // may need to mutate elements (e.g. syncInvalidIndices back-fills a missing
-  // `index`) — cloning up-front avoids "object is not extensible" crashes.
-  const thawed = JSON.parse(JSON.stringify(elements)) as ExcalidrawElement[];
-  api.updateScene({
-    elements: thawed,
-    appState: JSON.parse(JSON.stringify(appState ?? {})) as Pick<AppState, keyof AppState>,
-  });
-  const filesList = sceneFilesToArray(files);
-  if (filesList.length > 0) {
-    await api.addFiles(filesList);
-  }
-}
 
 export function EditorApp() {
   // Share-link viewer mode: `/?share=<token>` renders the read-only shared
@@ -89,31 +64,16 @@ export function EditorApp() {
       const result = await loadScene({ variables: { fileId: file.id } });
       const scene = result.data?.scene;
       if (scene) {
-        await applyScene(scene.elements, scene.appState, scene.files);
+        await applySceneToCanvas(scene.elements, scene.appState, scene.files);
         // Mark the file as synced-in: autosave may now write it. A failed or
         // raced load leaves this false, which blocks saving an unsynced
         // (possibly empty) canvas over the stored scene.
         useEditorStore.getState().setSceneLoaded(true);
-        // Restore the saved viewport exactly when present; otherwise fall
-        // back to fitting the drawing into the view.
-        const saved = (scene.appState ?? {}) as Record<string, unknown>;
-        const zoomValue = (saved.zoom as { value?: number } | undefined)?.value;
+        // Restore the saved viewport exactly when present; otherwise fit the
+        // drawing (empty scenes reset to the default view — see helper).
         const api = useEditorStore.getState().excalidrawApi;
-        if (
-          api &&
-          typeof saved.scrollX === "number" &&
-          typeof saved.scrollY === "number" &&
-          typeof zoomValue === "number"
-        ) {
-          api.updateScene({
-            appState: {
-              scrollX: saved.scrollX,
-              scrollY: saved.scrollY,
-              zoom: { value: zoomValue } as AppState["zoom"],
-            },
-          });
-        } else {
-          api?.scrollToContent(undefined, { fitToViewport: true });
+        if (api) {
+          applySavedViewport(api, scene.elements.length, scene.appState);
         }
       }
     } finally {
@@ -171,7 +131,7 @@ export function EditorApp() {
         guestStore.cancelSave?.();
         guestStore.setLoadingScene(true);
         try {
-          await applyScene(guest.data.elements, guest.data.appState, guest.data.files);
+          await applySceneToCanvas(guest.data.elements, guest.data.appState, guest.data.files);
         } finally {
           useEditorStore.getState().setLoadingScene(false);
         }
@@ -222,6 +182,18 @@ export function EditorApp() {
         return;
       }
 
+      // Version history (Ctrl+Alt+H — plain Ctrl+H is the browser's history).
+      if (mod && event.altKey && event.key.toLowerCase() === "h") {
+        event.preventDefault();
+        const store = useEditorStore.getState();
+        if (user) {
+          store.openHistoryDialog();
+        } else {
+          store.openAuthDialog("Sign in to browse your drawings' version history.");
+        }
+        return;
+      }
+
       // Open Excalidraw's built-in image export dialog (advertised as
       // "Export image…" in the command palette).
       if (mod && event.shiftKey && event.key.toLowerCase() === "e") {
@@ -246,6 +218,7 @@ export function EditorApp() {
       <FilesDialog onOpenFile={(file) => void openFile(file)} />
       <ShareDialog />
       <AiDialog />
+      <HistoryDialog />
       <PresentationMode />
       <CommandPalette user={user} files={files} onOpenFile={(file) => void openFile(file)} />
     </main>

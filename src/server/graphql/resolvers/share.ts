@@ -7,7 +7,7 @@ import { type FileRow, files, users } from "@/db/schema";
 import { gqlError } from "@/server/graphql/errors";
 import type { CommentOutput, FileOutput, SceneDataOutput } from "@/server/graphql/types";
 import { toFileOutput } from "@/server/graphql/types";
-import { notifyRealtimeCommentAdded } from "@/server/realtime/notify";
+import { notifyRealtimeCommentAdded, notifyRealtimeReactions } from "@/server/realtime/notify";
 import { emptyScene, readScene } from "@/server/scenes";
 import { insertComment, listFileComments, toggleCommentReaction } from "./comments";
 import { requireOwnedFile } from "./files";
@@ -252,5 +252,10 @@ export async function toggleGuestCommentReaction(
 ): Promise<CommentOutput> {
   const file = await requireSharedFile(token);
   const guestId = await requireGuestIdentity(file, guestName, clientKey);
-  return toggleCommentReaction(guestId, commentId, emoji);
+  const comment = await toggleCommentReaction(guestId, commentId, emoji);
+  // The owner's live session refetches so they see the guest's reaction.
+  if (file.shareToken) {
+    void notifyRealtimeReactions(file.shareToken);
+  }
+  return comment;
 }

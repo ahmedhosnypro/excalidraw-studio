@@ -1,15 +1,15 @@
 "use client";
 
 import { useQuery } from "@apollo/client/react";
-import { exportToSvg } from "@excalidraw/excalidraw";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
-import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 import { PenTool } from "lucide-react";
-import { useTheme } from "next-themes";
-import { useEffect, useRef } from "react";
+
+import { SceneSvgPreview } from "@/components/studio/scene-svg-preview";
 import type { SceneQueryData, SceneQueryVariables } from "@/lib/graphql/operations";
 import { SCENE_QUERY } from "@/lib/graphql/operations";
-import { mountSvgPreview } from "@/lib/svg-preview";
+
+/** Stable identity for "no elements yet" (keeps preview effects calm). */
+const EMPTY_ELEMENTS: readonly ExcalidrawElement[] = [];
 
 /**
  * Small live SVG preview of a drawing, rendered from its stored scene via
@@ -26,8 +26,6 @@ export function FileThumbnail({
   name: string;
   variant?: "row" | "grid";
 }) {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const { resolvedTheme } = useTheme();
   // network-only: the preview must reflect the latest autosaved scene (the
   // Apollo cache can hold a stale pre-edit/pre-theme-toggle snapshot).
   const { data, loading } = useQuery<SceneQueryData, SceneQueryVariables>(SCENE_QUERY, {
@@ -36,40 +34,7 @@ export function FileThumbnail({
   });
 
   const scene = data?.scene;
-  const elements = (scene?.elements ?? []) as readonly ExcalidrawElement[];
-
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host || loading || elements.length === 0) {
-      return;
-    }
-    let cancelled = false;
-    void exportToSvg({
-      elements: elements as never,
-      appState: {
-        // Transparent background — the chip's muted bg provides the surface,
-        // so stroke colors stay visible in both light and dark themes.
-        exportBackground: false,
-        exportWithDarkMode: resolvedTheme === "dark",
-      },
-      files: (scene?.files ?? {}) as unknown as BinaryFiles,
-      exportPadding: 12,
-    })
-      .then((svg) => {
-        if (cancelled) {
-          return;
-        }
-        mountSvgPreview(svg, host);
-      })
-      .catch(() => {
-        // Keep the placeholder on render failures (e.g. corrupt scene).
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [elements, scene?.files, resolvedTheme, loading]);
-
-  const isEmpty = !loading && elements.length === 0;
+  const elements = (scene?.elements as readonly ExcalidrawElement[] | undefined) ?? EMPTY_ELEMENTS;
 
   return (
     <div
@@ -82,10 +47,12 @@ export function FileThumbnail({
     >
       {loading ? (
         <div className="h-full w-full animate-pulse bg-muted/60" />
-      ) : isEmpty ? (
-        <PenTool className="h-4 w-4 text-muted-foreground/60" aria-hidden />
       ) : (
-        <div ref={hostRef} className="h-full w-full" />
+        <SceneSvgPreview
+          elements={elements}
+          files={scene?.files}
+          fallbackIcon={<PenTool className="h-4 w-4 text-muted-foreground/60" />}
+        />
       )}
       <span className="sr-only">Preview of {name}</span>
     </div>

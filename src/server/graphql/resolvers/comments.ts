@@ -10,7 +10,7 @@ import {
   type CommentReactionOutput,
   toCommentOutput,
 } from "@/server/graphql/types";
-import { notifyRealtimeCommentAdded } from "@/server/realtime/notify";
+import { notifyRealtimeCommentAdded, notifyRealtimeReactions } from "@/server/realtime/notify";
 import { requireOwnedFile } from "./files";
 
 const bodySchema = z
@@ -379,6 +379,15 @@ export async function toggleCommentReaction(
     await db.delete(commentReactions).where(eq(commentReactions.id, existing[0].id));
   } else {
     await db.insert(commentReactions).values({ commentId, userId, emoji: parsedEmoji });
+  }
+  // Live viewers of a shared link refetch the thread list to see the change.
+  const fileRows = await db
+    .select({ shareToken: files.shareToken })
+    .from(files)
+    .where(eq(files.id, found.comment.fileId))
+    .limit(1);
+  if (fileRows[0]?.shareToken) {
+    void notifyRealtimeReactions(fileRows[0].shareToken);
   }
   return toCommentOutput(found.comment, found.author, await reactionsOf(commentId, userId));
 }

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { type FileRow, files } from "@/db/schema";
 import { gqlError } from "@/server/graphql/errors";
+import { autoSnapshotOnSave, snapshotKeysOf } from "@/server/graphql/resolvers/history";
 import type { FileOutput, StorageUsageOutput } from "@/server/graphql/types";
 import { toFileOutput } from "@/server/graphql/types";
 import {
@@ -114,6 +115,9 @@ export async function saveScene(
     .set({ updatedAt: new Date() })
     .where(and(eq(files.id, fileId), eq(files.userId, userId)))
     .returning();
+  // Version history: periodically checkpoint the saved scene (best-effort,
+  // throttled server-side — at most one snapshot every few minutes).
+  await autoSnapshotOnSave(updated[0] ?? row, scene);
   return toFileOutput(updated[0] ?? row);
 }
 
@@ -135,6 +139,11 @@ export async function storageUsageOf(userId: string): Promise<StorageUsageOutput
   let bytes = 0;
   for (const row of rows) {
     bytes += (await storage.size(row.storageKey)) ?? 0;
+  }
+  // Version-history snapshots live in the same storage adapter — count them
+  // so the indicator reflects real disk usage.
+  for (const key of await snapshotKeysOf(userId)) {
+    bytes += (await storage.size(key)) ?? 0;
   }
   return { bytes, fileCount: rows.length };
 }
